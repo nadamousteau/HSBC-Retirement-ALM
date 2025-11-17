@@ -672,6 +672,7 @@ def optimize_portfolio_for_risk(mu_vec, Sigma, target_vol, asset_names, risk_pro
 
     Les bornes (eq_max, hy_max, safe_min, plafonds) sont *des fonctions de target_vol*,
     pas du nom de profil, donc on peut modifier la vol cible ou créer de nouveaux profils risque.
+    """
     n = len(mu_vec)
     lam_vol = 200.0   # poids de la contrainte de vol
     lam_conc = 1.0    # pénalité de concentration (sum w^2)
