@@ -1,0 +1,6 @@
+# Contenu du fichier .gitignore
+.venv/
+venv/
+env/
+__pycache__/
+data/
