@@ -3,14 +3,17 @@
 """
 Simulation d'investissement - STRATÉGIE FIXED MIX (Allocation Constante)
 - Backtesting sur données historiques puis forecasts Black & Scholes
+- Paramètres FIGÉS : Départ 40 ans, Fin 63 ans (Durée 23 ans)
 - Allocation FIXE déterminée automatiquement par le PROFIL choisi
 - Rééquilibrage MENSUEL
-- MODELE D'APPORT : QUADRATIQUE (Réaliste selon Bruder et al. 2025)
+- MODELE D'APPORT : QUADRATIQUE FIXE (Max à 53 ans)
+- GRAPHIQUES : Abscisse en DATE (Calendrier)
 """
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import matplotlib.dates as mdates
 
 ''' ========== ACTIFS DISPONIBLES ========== '''
 
@@ -66,17 +69,19 @@ PROFILS = {
     }
 }
 
-''' ========== PARAMÈTRES DE SIMULATION ========== '''
+''' ========== PARAMÈTRES DE SIMULATION (FIXES) ========== '''
 
-
+# --- C'EST ICI QUE TOUT SE JOUE ---
 PROFIL_CHOISI = "EQUILIBRE"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
 # ----------------------------------
 
-# Paramètres financiers
-nb_annees = 35
-t0 = "2001-12-31"  # Date de départ
-age_depart = 30
-capital_initial = 10000
+# Paramètres financiers FIXES
+age_depart = 40
+nb_annees = 23
+age_fin = age_depart + nb_annees  # 63 ans
+
+t0 = "2001-12-31"  # Date de départ historique
+capital_initial = 50000
 salaire_initial = 3000
 taux_apport = 0.10
 taux_inflation = 0.02 
@@ -155,7 +160,7 @@ print(f"Equity: {EQUITIES.get(Equity, Equity)}")
 print(f"Bond: {BONDS_SAFE.get(Bond, BONDS_RISKY.get(Bond, Bond))}")
 print(f"Allocation CONSTANTE: {FIXED_ALLOCATION_EQUITY*100:.0f}% equity")
 print("Rééquilibrage: MENSUEL")
-print("Modèle d'apport: QUADRATIQUE (Réaliste)")
+print("Modèle d'apport: QUADRATIQUE (Fixe [40-63], Max à 53 ans)")
 
 ''' ========== PARAMÈTRES POUR FORECASTS ========== '''
 
@@ -204,47 +209,25 @@ def calculer_allocation(age):
     """
     return FIXED_ALLOCATION_EQUITY, 1 - FIXED_ALLOCATION_EQUITY
 
-''' ========== MODÈLE D'APPORT QUADRATIQUE (CORRIGÉ & RÉALISTE) ========== '''
-# ### MODIFICATION PAPIER ###
-# Calibrage basé sur l'Appendix A.5 et la Figure 51 (Page 92)
-# L'épargne monte, atteint un pic vers 50-55 ans, puis redescend.
+''' ========== MODÈLE D'APPORT QUADRATIQUE FIXÉ ========== '''
 
-def calculer_apport_quadratique(t_annees, apport_init, duree_totale):
+def calculer_apport_quadratique(t_annees_ecoulees, apport_init):
     """
-    Simule une courbe d'épargne en cloche asymétrique.
-    Croissance jusqu'à un 'Age Pic', puis décroissance vers la retraite.
-    
-    t_annees : temps écoulé en années (0 à 35)
-    apport_init : montant du premier versement (ex: 300€)
-    duree_totale : durée de la simulation (ex: 35 ans)
+    Fonction parabolique stricte sur l'intervalle [40, 63].
+    Sommet (Max) forcé à l'âge 53.
     """
+    age_actuel = 40 + t_annees_ecoulees
+    age_pic = 53
     
-    # 1. Définition du Pic (Sommet de la carrière)
-    # Selon le papier, le pic est souvent vers 50-55 ans.
-    # Si on commence à 30 ans sur 35 ans, le pic est aux 2/3 du chemin.
-    ratio_pic = 0.55  # Le pic arrive à 65% de la durée (env. 53 ans)
-    t_pic = duree_totale * ratio_pic
-    
-    # 2. Hauteur du Pic
-    # Facteur multiplicateur : On suppose qu'au sommet de sa carrière, 
-    # on épargne 3x plus qu'au début (ex: 300€ -> 900€).
-    facteur_croissance_max = 1.8
+    facteur_croissance_max = 1.2 
     apport_max = apport_init * facteur_croissance_max
     
-    # 3. Calcul de la parabole (Forme Canonique : y = a(x-h)^2 + k)
-    # On sait que c(0) = apport_init et c(t_pic) = apport_max
-    # apport_init = a * (0 - t_pic)^2 + apport_max
-    # a = (apport_init - apport_max) / (t_pic^2)
+    # a = (apport_init - apport_max) / (13^2)
+    a = (apport_init - apport_max) / (13**2)
     
-    if t_pic > 0:
-        a = (apport_init - apport_max) / (t_pic**2)
-    else:
-        return apport_init
-
-    apport = a * (t_annees - t_pic)**2 + apport_max
-    
-    # Sécurité : on ne peut pas avoir d'apport négatif (si la baisse est trop forte)
+    apport = a * (age_actuel - age_pic)**2 + apport_max
     return max(apport, 0)
+
 ''' ========== EXTRACTION RENDEMENTS HISTORIQUES ========== '''
 
 def extraire_rendements_historiques(date_debut, nb_mois):
@@ -310,11 +293,10 @@ else:
     rendements_bd_scenarios = rendements_bd_hist.reshape(-1, 1)
     nb_simulations = 1
 
-''' ========== BOUCLE DE SIMULATION (FIXED MIX REBALANCED MONTHLY) ========== '''
+''' ========== BOUCLE DE SIMULATION ========== '''
 
 resultats_finaux = []
 historiques_capital = []
-# On stocke l'historique des apports pour le graphique
 historique_apports_moyens = np.zeros(nb_periodes_total) 
 
 for sim in range(nb_simulations):
@@ -323,22 +305,17 @@ for sim in range(nb_simulations):
     eq_price = 100.0
     bd_price = 100.0
     
-    # Allocation initiale
     pct_eq, pct_bd = calculer_allocation(age_depart)
     
     eq_shares = (capital_initial * pct_eq) / eq_price
     bd_shares = (capital_initial * pct_bd) / bd_price
     
-   
-    # salaire_actuel = salaire_initial 
     historique_capital = [capital_initial]
     total_investi_sim = capital_initial
     
     for k in range(nb_periodes_total):
         mois = k + 1
         t_annees_ecoulees = k / 12.0
-        annee_courante = k // 12
-        age_actuel = age_depart + annee_courante
         
         # 1. Évolution des prix
         r_eq = rendements_eq_scenarios[k, sim]
@@ -347,21 +324,18 @@ for sim in range(nb_simulations):
         eq_price *= (1 + r_eq)
         bd_price *= (1 + r_bd)
         
-        # 2. Apport mensuel : MODIFICATION QUADRATIQUE
-       
+        # 2. Apport mensuel
         apport_base_init = salaire_initial * taux_apport
-        apport_mensuel = calculer_apport_quadratique(t_annees_ecoulees, apport_base_init, nb_annees)
-        
-        # Ajustement optionnel pour l'inflation (pour garder la logique de pouvoir d'achat)
+        apport_mensuel = calculer_apport_quadratique(t_annees_ecoulees, apport_base_init)
         apport_mensuel *= (1 + taux_inflation)**t_annees_ecoulees
         
-        if sim == 0: 
+        if sim == 0:
             historique_apports_moyens[k] = apport_mensuel
 
         total_investi_sim += apport_mensuel
         
-        # On achète selon la cible fixe
-        pct_eq_cible, pct_bd_cible = calculer_allocation(age_actuel)
+        # 3. Allocation cible
+        pct_eq_cible, pct_bd_cible = calculer_allocation(40 + t_annees_ecoulees)
         
         eq_buy = apport_mensuel * pct_eq_cible
         bd_buy = apport_mensuel * pct_bd_cible
@@ -369,28 +343,22 @@ for sim in range(nb_simulations):
         eq_shares += eq_buy / eq_price
         bd_shares += bd_buy / bd_price
         
-        # 4. Rééquilibrage MENSUEL (Target = Profil)
+        # 4. Rééquilibrage
         total_val = eq_shares * eq_price + bd_shares * bd_price
-        
         target_eq_val = total_val * pct_eq_cible
-        target_bd_val = total_val * pct_bd_cible
         
         eq_val = eq_shares * eq_price
-        bd_val = bd_shares * bd_price
         
         if eq_val > target_eq_val and eq_shares > 0:
-            # On a trop d'actions, on vend equity -> bond
             vente_eq = (eq_val - target_eq_val) / eq_price
             eq_shares -= vente_eq
             bd_shares += (eq_val - target_eq_val) / bd_price
         elif eq_val < target_eq_val and bd_shares > 0:
-            # On n'a pas assez d'actions, on vend bond -> equity
             vente_bd = (target_eq_val - eq_val) / bd_price
             vente_bd = min(vente_bd, bd_shares)
             bd_shares -= vente_bd
             eq_shares += (vente_bd * bd_price) / eq_price
         
-        # Enregistrement
         capital_actuel = eq_shares * eq_price + bd_shares * bd_price
         historique_capital.append(capital_actuel)
     
@@ -419,9 +387,9 @@ rendement_moyen = ((capital_moyen / total_investi_moyen) - 1) * 100
 print("\n" + "=" * 80)
 print(f"📊 RÉSULTATS - PROFIL {PROFIL_CHOISI} (Fixed Mix)")
 print("=" * 80)
-print(f"Simulations: {nb_simulations} | Horizon: {nb_annees} ans")
+print(f"Simulations: {nb_simulations} | Horizon: {nb_annees} ans (Age {age_depart} -> {age_fin})")
 print(f"Allocation: {FIXED_ALLOCATION_EQUITY*100:.0f}% Equity / {100-FIXED_ALLOCATION_EQUITY*100:.0f}% Bonds")
-print(f"Modèle d'apport: Quadratique (Pic à {nb_annees*0.75:.0f} ans)")
+print(f"Modèle d'apport: Quadratique (Max à 53 ans)")
 print(f"\n💰 Investissement:")
 print(f"  • Capital initial: {capital_initial:>15,.2f} €")
 print(f"  • Apports totaux: {total_investi_moyen - capital_initial:>15,.2f} €")
@@ -436,12 +404,20 @@ if nb_simulations > 1:
 print(f"\n✨ Gain médian: {capital_median - total_investi_moyen:>15,.2f} €")
 print("=" * 80)
 
-''' ========== VISUALISATIONS ========== '''
+''' ========== VISUALISATIONS (DATES) ========== '''
+
+# Création de l'axe des dates pour les graphiques
+# On utilise freq='M' pour avoir les fins de mois
+dates_simulation = pd.date_range(start=t0, periods=nb_periodes_total, freq='M')
+# On doit ajouter la date initiale pour les historiques qui ont taille nb_periodes + 1
+dates_simulation_plus_init = [pd.to_datetime(t0)] + list(dates_simulation)
+
+# Calcul de la date du pic (53 ans = 40 + 13 ans)
+date_pic = pd.to_datetime(t0) + pd.DateOffset(years=13)
 
 if nb_simulations == 1:
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     
-    mois = range(len(historiques_capital[0]))
     # Calcul manuel du cumul pour le graph single simulation
     cumul_investi = [capital_initial]
     curr_invest = capital_initial
@@ -449,32 +425,30 @@ if nb_simulations == 1:
         curr_invest += historique_apports_moyens[m]
         cumul_investi.append(curr_invest)
 
-    axes[0, 0].plot(mois, historiques_capital[0], color='#2E86AB', linewidth=2, label='Capital valorisé')
-    axes[0, 0].plot(mois, cumul_investi, color='#A23B72', linewidth=2, linestyle='--', label='Capital investi')
+    # Graph 1 : Evolution Capital (Date)
+    axes[0, 0].plot(dates_simulation_plus_init, historiques_capital[0], color='#2E86AB', linewidth=2, label='Capital valorisé')
+    axes[0, 0].plot(dates_simulation_plus_init, cumul_investi, color='#A23B72', linewidth=2, linestyle='--', label='Capital investi')
     axes[0, 0].set_title(f'Evolution du capital - {PROFIL_CHOISI}', fontsize=14, fontweight='bold')
-    axes[0, 0].set_xlabel('Mois', fontsize=11)
+    axes[0, 0].set_xlabel('Date', fontsize=11)
     axes[0, 0].set_ylabel('Capital (€)', fontsize=11)
     axes[0, 0].legend()
     axes[0, 0].grid(True, alpha=0.3)
     
-    ages = range(age_depart, age_depart + nb_annees + 1)
-    allocations_eq = [calculer_allocation(age)[0] * 100 for age in ages]
-    allocations_bd = [calculer_allocation(age)[1] * 100 for age in ages]
-    
-    
-    annees_graph = np.array(range(nb_periodes_total)) / 12 + age_depart
-    axes[0, 1].plot(annees_graph, historique_apports_moyens, linewidth=2.5, color='#D4AF37', label='Apport mensuel')
-    axes[0, 1].set_title(f'Profil des Apports (Modèle Quadratique)', fontsize=14, fontweight='bold')
-    axes[0, 1].set_xlabel('Âge', fontsize=11)
+    # Graph 2 : Apports (Date)
+    axes[0, 1].plot(dates_simulation, historique_apports_moyens, linewidth=2.5, color='#D4AF37', label='Apport mensuel')
+    axes[0, 1].axvline(x=date_pic, color='red', linestyle='--', alpha=0.5, label='Pic (53 ans)')
+    axes[0, 1].set_title(f'Profil des Apports (Max à 53 ans)', fontsize=14, fontweight='bold')
+    axes[0, 1].set_xlabel('Date', fontsize=11)
     axes[0, 1].set_ylabel('Apport Mensuel (€)', fontsize=11)
     axes[0, 1].legend()
     axes[0, 1].grid(True, alpha=0.3)
     
-    axes[1, 0].plot(rendements_eq_scenarios[:, 0] * 100, alpha=0.7, linewidth=1, label='Equity', color='#2E86AB')
-    axes[1, 0].plot(rendements_bd_scenarios[:, 0] * 100, alpha=0.7, linewidth=1, label='Bonds', color='#A23B72')
+    # Graph 3 : Rendements (Date)
+    axes[1, 0].plot(dates_simulation, rendements_eq_scenarios[:, 0] * 100, alpha=0.7, linewidth=1, label='Equity', color='#2E86AB')
+    axes[1, 0].plot(dates_simulation, rendements_bd_scenarios[:, 0] * 100, alpha=0.7, linewidth=1, label='Bonds', color='#A23B72')
     axes[1, 0].axhline(y=0, color='red', linestyle='--', alpha=0.5)
     axes[1, 0].set_title('Rendements mensuels historiques', fontsize=14, fontweight='bold')
-    axes[1, 0].set_xlabel('Mois', fontsize=11)
+    axes[1, 0].set_xlabel('Date', fontsize=11)
     axes[1, 0].set_ylabel('Rendement (%)', fontsize=11)
     axes[1, 0].legend()
     axes[1, 0].grid(True, alpha=0.3)
@@ -499,6 +473,7 @@ if nb_simulations == 1:
 else:
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     
+    # Graph 1 : Distribution (Pas de date ici, c'est un histogramme)
     axes[0, 0].hist(capitaux_finaux, bins=50, color='#2E86AB', alpha=0.7, edgecolor='black')
     axes[0, 0].axvline(capital_median, color='red', linestyle='--', linewidth=2, label=f'Médiane: {capital_median:,.0f} €')
     axes[0, 0].axvline(capital_moyen, color='green', linestyle='--', linewidth=2, label=f'Moyenne: {capital_moyen:,.0f} €')
@@ -516,23 +491,23 @@ else:
         for p in percentiles:
             evolutions_percentiles[p].append(np.percentile(valeurs_k, p))
     
-    mois = range(len(historiques_capital[0]))
-    axes[0, 1].fill_between(mois, evolutions_percentiles[10], evolutions_percentiles[90], 
+    # Graph 2 : Percentiles (Date)
+    axes[0, 1].fill_between(dates_simulation_plus_init, evolutions_percentiles[10], evolutions_percentiles[90], 
                              alpha=0.2, color='#2E86AB', label='P10-P90')
-    axes[0, 1].fill_between(mois, evolutions_percentiles[25], evolutions_percentiles[75], 
+    axes[0, 1].fill_between(dates_simulation_plus_init, evolutions_percentiles[25], evolutions_percentiles[75], 
                              alpha=0.3, color='#2E86AB', label='P25-P75')
-    axes[0, 1].plot(mois, evolutions_percentiles[50], color='#A23B72', linewidth=2.5, label='Médiane')
+    axes[0, 1].plot(dates_simulation_plus_init, evolutions_percentiles[50], color='#A23B72', linewidth=2.5, label='Médiane')
     axes[0, 1].set_title('Evolution du capital (percentiles)', fontsize=14, fontweight='bold')
-    axes[0, 1].set_xlabel('Mois', fontsize=11)
+    axes[0, 1].set_xlabel('Date', fontsize=11)
     axes[0, 1].set_ylabel('Capital (€)', fontsize=11)
     axes[0, 1].legend()
     axes[0, 1].grid(True, alpha=0.3)
     
-    # Remplacement du graph d'allocation par le graph des apports (plus pertinent ici)
-    annees_graph = np.array(range(nb_periodes_total)) / 12 + age_depart
-    axes[1, 0].plot(annees_graph, historique_apports_moyens, linewidth=2.5, color='#D4AF37', label='Apport mensuel')
-    axes[1, 0].set_title(f'Profil des Apports (Modèle Quadratique)', fontsize=14, fontweight='bold')
-    axes[1, 0].set_xlabel('Âge', fontsize=11)
+    # Graph 3 : Apports (Date)
+    axes[1, 0].plot(dates_simulation, historique_apports_moyens, linewidth=2.5, color='#D4AF37', label='Apport mensuel')
+    axes[1, 0].axvline(x=date_pic, color='red', linestyle='--', alpha=0.5, label='Pic (53 ans)')
+    axes[1, 0].set_title(f'Profil des Apports (Max à 53 ans)', fontsize=14, fontweight='bold')
+    axes[1, 0].set_xlabel('Date', fontsize=11)
     axes[1, 0].set_ylabel('Apport Mensuel (€)', fontsize=11)
     axes[1, 0].legend()
     axes[1, 0].grid(True, alpha=0.3)
@@ -540,11 +515,12 @@ else:
     rendements_mensuels_eq = np.mean(rendements_eq_scenarios, axis=1) * 100
     rendements_mensuels_bd = np.mean(rendements_bd_scenarios, axis=1) * 100
     
-    axes[1, 1].plot(rendements_mensuels_eq, alpha=0.7, linewidth=1, label='Equity', color='#2E86AB')
-    axes[1, 1].plot(rendements_mensuels_bd, alpha=0.7, linewidth=1, label='Bonds', color='#A23B72')
+    # Graph 4 : Rendements moyens (Date)
+    axes[1, 1].plot(dates_simulation, rendements_mensuels_eq, alpha=0.7, linewidth=1, label='Equity', color='#2E86AB')
+    axes[1, 1].plot(dates_simulation, rendements_mensuels_bd, alpha=0.7, linewidth=1, label='Bonds', color='#A23B72')
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.5)
     axes[1, 1].set_title('Rendements mensuels moyens', fontsize=14, fontweight='bold')
-    axes[1, 1].set_xlabel('Mois', fontsize=11)
+    axes[1, 1].set_xlabel('Date', fontsize=11)
     axes[1, 1].set_ylabel('Rendement (%)', fontsize=11)
     axes[1, 1].legend()
     axes[1, 1].grid(True, alpha=0.3)
