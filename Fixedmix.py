@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-SIMULATION ALM - DASHBOARD FINAL (LINEAR SCALE)
-- Axe Y Capital en LINEAIRE
-- Correction Volatilité (Trajectoires réelles)
-- Correction Historique vs Futur (Pivot 2025)
-"""
+
 
 import pandas as pd
 import numpy as np
