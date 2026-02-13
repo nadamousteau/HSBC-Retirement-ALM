@@ -1,0 +1,16 @@
+# Python compilé
+__pycache__/
+*.pyc
+
+# Environnements virtuels (si vous en utilisez)
+venv/
+env/
+.env
+
+# Paramètres IDE
+.vscode/
+.idea/
+
+# Système
+.DS_Store
+Thumbs.db
