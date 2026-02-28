@@ -1,0 +1,1 @@
+Pour afficher quelque chose allez dans le fichier setting et mettez True en face de ce que vous voulez afficher. Attention si le mode comparaison est activé ou non il y a certains affichages qui ne seront pas dispo.
