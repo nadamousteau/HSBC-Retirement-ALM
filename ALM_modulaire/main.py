@@ -9,6 +9,9 @@ from config import settings, profiles
 from data import loader
 from src import economics, liabilities, strategies, engine, analytics
 from src.analytics import plotting
+from src.economics.yield_curve import YieldCurveBuilder
+from src.liabilities.goal_price_index import GoalPriceIndex
+
 
 def main():
     # =========================================================================
@@ -35,7 +38,7 @@ def main():
     if getattr(settings, 'SIMULER_CRISE_LOCALISEE', False):
         date_crise_ts = pd.Timestamp(settings.DATE_CRISE)
         date_pivot_ts = pd.Timestamp(settings.DATE_PIVOT_BACKTEST)
-        
+
         # Vérification stricte unifiée : pas de choc déterministe dans le passé historique
         if date_crise_ts > date_pivot_ts:
             r_eq, r_bd = economics.shocks.injecter_crise_localisee(
@@ -45,44 +48,65 @@ def main():
             print(f"ATTENTION : La date de crise ({settings.DATE_CRISE}) précède ou égale la date pivot ({settings.DATE_PIVOT_BACKTEST}). Le choc a été ignoré.")
 
     # =========================================================================
+    # 2b. INITIALISATION GBI (yield curve + GoalPriceIndex)
+    # =========================================================================
+    gpi = None
+
+    mode_comparaison = getattr(settings, 'MODE_COMPARAISON', False)
+    strategies_run = settings.STRATEGIES_A_COMPARER if mode_comparaison else [settings.METHODE_DEFAUT]
+
+    if "GBI" in strategies_run:
+        yc = YieldCurveBuilder().load_from_csv(settings.CSV_YIELD_CURVE)
+        gpi = GoalPriceIndex(
+            yield_curve=yc,
+            retirement_date=settings.DATE_RETRAITE_GBI,
+            dec_years=settings.DUREE_DECUMULATION_GBI
+        )
+        print(f"GBI : Courbe des taux chargee ({len(yc.dates)} observations), "
+              f"GPI retraite {settings.DATE_RETRAITE_GBI}, "
+              f"plancher {settings.FLOOR_PERCENT_GBI*100:.0f}%")
+
+    # =========================================================================
     # 3. BOUCLE D'ÉVALUATION DES STRATÉGIES
     # =========================================================================
-    mode_comparaison = getattr(settings, 'MODE_COMPARAISON', False)
-    strategies_run = settings.STRATEGIES_A_COMPARER if mode_comparaison else [settings.METHODE]
-
     resultats_comparaison = {}
-    dernier_contexte = {} # Stockage des données communes pour les graphiques post-boucle
+    dernier_contexte = {}  # Stockage des données communes pour les graphiques post-boucle
 
     for strat_actuelle in strategies_run:
         # Écrasement local pour garantir l'aiguillage dans les modules sous-jacents
         settings.METHODE = strat_actuelle
-        
-        if settings.METHODE == "TARGET_DATE":
-            strategy = strategies.TargetDateStrategy()
-        else: 
-            strategy = strategies.FixedMixStrategy()
 
-        # Exécution du moteur
-        mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire = engine.run_simulation(
-            strategy, r_eq, r_bd, dates
-        )
+        # ── Dispatch vers le bon moteur ──────────────────────────────────────
+        if strat_actuelle == "GBI":
+            mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _ = engine.run_simulation_gbi(
+                gpi, r_eq, r_bd, dates, idx_split
+            )
+        else:
+            if strat_actuelle == "TARGET_DATE":
+                strategy = strategies.TargetDateStrategy()
+            else:
+                strategy = strategies.FixedMixStrategy()
+
+            mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire = engine.run_simulation(
+                strategy, r_eq, r_bd, dates
+            )
 
         # =========================================================================
         # 4. POST-TRAITEMENT & ANALYTICS
         # =========================================================================
         capitaux_finaux = mat_cap[-1, :]
         total_investi = courbe_investi[-1]
-        
+
         idx_sorted = np.argsort(capitaux_finaux)
         idx_p50 = idx_sorted[int(settings.NB_SIMULATIONS * 0.50)]
-        
+
         tri_median = analytics.metrics.calculer_tri_annualise(settings.CAPITAL_INITIAL, hist_apport, capitaux_finaux[idx_p50])
         kpis = analytics.metrics.calcul_kpi_complets(capitaux_finaux, total_investi, mat_cap)
-        
+
         coeff_inflation = 1 / ((1 + settings.TAUX_INFLATION) ** settings.NB_ANNEES_ACCUMULATION)
         capital_p5_reel = kpis['var_95'] * coeff_inflation
         gain_p5_reel = capital_p5_reel - total_investi
-        
+
         dernier_salaire = hist_salaire[-1]
         taux_remp, mat_cap_retraite = liabilities.decumulation.simuler_decumulation(
             capitaux_finaux, dernier_salaire, settings.TAUX_LIVRET_A, settings.DUREE_RETRAITE
@@ -117,7 +141,7 @@ def main():
                 print(f"  • Max Drawdown médian       : {max_dd_median*100:>15.2f} %")
                 print(f"  • Max Underwater            : {kpis['max_underwater']:>15.1f} années")
                 print(f"  • Sortino Ratio             : {kpis['sortino']:>15.2f}")
-                
+
                 if gain_p5_reel < 0:
                     print(f"\n[ ALERTE INFLATION ]")
                     print(f"  • P&L réel P5 (Worst Case)  : {gain_p5_reel:>+16,.0f} € (Destruction de pouvoir d'achat)")
@@ -164,12 +188,12 @@ def main():
             plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=False)
         if getattr(settings, 'PLOT_CRISE_CAPITAL_REEL', False):
             plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=True)
-        
+
     if getattr(settings, 'PLOT_RETRAITE_CAPITAL', False):
         plotting.plot_retraite_capital(mat_cap_retraite, reel=False)
     if getattr(settings, 'PLOT_RETRAITE_CAPITAL_REEL', False):
         plotting.plot_retraite_capital(mat_cap_retraite, reel=True)
-        
+
     if getattr(settings, 'PLOT_TAUX_REMPLACEMENT', False):
         plotting.plot_taux_remplacement(taux_remp, reel=False)
     if getattr(settings, 'PLOT_TAUX_REMPLACEMENT_REEL', False):
@@ -182,22 +206,22 @@ def main():
         print("\n" + "="*80)
         print("SYNTHÈSE DES CAPITAUX FINAUX À LA RETRAITE (FIN D'ACCUMULATION)")
         print("="*80)
-        
+
         # La boucle s'adapte automatiquement : 1 stratégie (mode normal) ou N stratégies (mode comparaison)
         for strat_nom, mat_c in resultats_comparaison.items():
             capitaux_finaux_strat = mat_c[-1, :]
-            
+
             # Tri pour extraction des quantiles
             idx_sort = np.argsort(capitaux_finaux_strat)
             p5 = capitaux_finaux_strat[idx_sort[int(settings.NB_SIMULATIONS * 0.05)]]
             p50 = capitaux_finaux_strat[idx_sort[int(settings.NB_SIMULATIONS * 0.50)]]
             p95 = capitaux_finaux_strat[idx_sort[int(settings.NB_SIMULATIONS * 0.95)]]
-            
+
             print(f"\n[ STRATÉGIE : {strat_nom} ]")
             print(f"  • Capital P5  (Pessimiste 5%)  : {p5:>15,.0f} EUR")
             print(f"  • Capital P50 (Médiane)        : {p50:>15,.0f} EUR")
             print(f"  • Capital P95 (Optimiste 95%)  : {p95:>15,.0f} EUR")
-            
+
         print("="*80 + "\n")
 
 

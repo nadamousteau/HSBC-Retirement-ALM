@@ -5,7 +5,7 @@ from pathlib import Path
 # 0. STRATÉGIE GLOBALE ET BENCHMARKING
 # =============================================================================
 MODE_COMPARAISON = True                     # Si True, exécute et compare les stratégies listées
-STRATEGIES_A_COMPARER = ["TARGET_DATE", "FIXED_MIX"] 
+STRATEGIES_A_COMPARER = ["TARGET_DATE", "FIXED_MIX", "GBI"]
 METHODE_DEFAUT = "TARGET_DATE"              # Utilisée si MODE_COMPARAISON = False
 
 
@@ -21,6 +21,7 @@ INPUTS_DIR = DATA_DIR / "inputs"
 # Fichiers de données
 XLSX_ASSUMPTIONS = INPUTS_DIR / "AssumptionForSimulation.xlsx"
 CSV_HISTORICAL_RETURNS = INPUTS_DIR / "HistoricalAssetReturn.csv"
+CSV_YIELD_CURVE = INPUTS_DIR / "yield-curve-rates-1990-2024.csv"
 
 # =============================================================================
 # 2. MÉTHODE ET PROFIL
@@ -58,6 +59,22 @@ TAUX_LIVRET_A = 0.02 #La BdF fait en sorte que taux_livret_A >= taux_inflation
 # =============================================================================
 
 DUREE_RETRAITE = 20
+
+# =============================================================================
+# 6b. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
+# =============================================================================
+
+# Date de retraite cible : DATE_DEBUT_T0 + NB_ANNEES_ACCUMULATION
+DATE_RETRAITE_GBI = "2041-12-31"
+
+# Protection du plancher : 80% signifie que le portefeuille ne peut jamais
+# descendre sous 80% de la richesse cible actualisée (Goal Price Index).
+FLOOR_PERCENT_GBI = 0.80
+
+# Durée de la phase de décumulation utilisée pour le calcul du GPI (années)
+DUREE_DECUMULATION_GBI = 20
+# Contributions et salaire : identiques aux stratégies TARGET_DATE / FIXED_MIX
+# Glide path TDF           : identique à TargetDateStrategy (profiles.allocation_initiale)
 
 # =============================================================================
 # 7. PARAMÈTRES SIMULATION

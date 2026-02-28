@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 
-# Environnements virtuels (si vous en utilisez)
+# Environnements virtuels 
 venv/
 env/
 .env
@@ -14,3 +14,6 @@ env/
 # Système
 .DS_Store
 Thumbs.db
+
+# Données sensibles / fichiers Excel
+ALM_modulaire/data/inputs/AssumptionForSimulation.xlsx
