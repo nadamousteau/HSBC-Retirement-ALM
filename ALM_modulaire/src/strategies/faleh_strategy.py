@@ -58,9 +58,11 @@ class FalehStrategy(BaseStrategy):
         self.sigma_b = sigma_b
         self.corr_eb = corr_eb
         
-        # Générateur de scénarios
-        self.gse = EnhancedGSE(mu_e, sigma_e, mu_b, sigma_b, corr_eb)
-        
+       # Générateur de scénarios avec RSLN activé
+        self.gse = EnhancedGSE(
+            mu_e, sigma_e, mu_b, sigma_b, corr_eb,
+            use_markov_regimes=True  #  CORRECTION
+        )
         # Arbre de scénarios
         self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=5)
         self.tree = None
@@ -240,6 +242,11 @@ class FalehStrategy(BaseStrategy):
             # E[U(1 + R)] ≈ U(1 + μ) + 0.5 * U''(1 + μ) * σ²
             W_expected = 1 + portfolio_return
             
+            penalty = 0.0
+            if W_expected < self.target_wealth:
+                shortfall = self.target_wealth - W_expected
+                penalty = settings.FALEH_PENALTY_RUINE * (shortfall ** 2)
+
             if self.gamma == 1.0:
                 # Cas log-utilité
                 utility = np.log(W_expected) - 0.5 * (portfolio_std / W_expected)**2
@@ -249,7 +256,8 @@ class FalehStrategy(BaseStrategy):
                 # Correction pour la variance (approximation du 2nd ordre)
                 utility -= 0.5 * self.gamma * (W_expected**(-self.gamma - 1)) * portfolio_std**2
             
-            return -utility  # Minimisation
+            # Objectif = - (utilité - pénalité)
+            return -(utility - penalty)
         
         # Contraintes : w ∈ [0, 1]
         bounds = [(0.05, 0.95)]
