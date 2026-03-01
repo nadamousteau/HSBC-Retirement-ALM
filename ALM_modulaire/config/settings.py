@@ -5,8 +5,8 @@ from pathlib import Path
 # 0. STRATÉGIE GLOBALE ET BENCHMARKING
 # =============================================================================
 MODE_COMPARAISON = True                     # Si True, exécute et compare les stratégies listées
-STRATEGIES_A_COMPARER = ["TARGET_DATE", "FIXED_MIX", "GBI"]
-METHODE_DEFAUT = "TARGET_DATE"              # Utilisée si MODE_COMPARAISON = False
+STRATEGIES_A_COMPARER = ["TARGET_DATE", "FIXED_MIX", "GBI", "FALEH"]  # Liste des stratégies à comparer (doit être subset de PROFILS.keys() + "FALEH")
+METHODE_DEFAUT = "GBI"              # Utilisée si MODE_COMPARAISON = False
 
 
 # =============================================================================
@@ -28,7 +28,7 @@ CSV_YIELD_CURVE = INPUTS_DIR / "yield-curve-rates-1990-2024.csv"
 # =============================================================================
 
 
-PROFIL_CHOISI = "EQUILIBRE"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
+PROFIL_CHOISI = "MODERE"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
 
 # =============================================================================
 # 3. PARAMÈTRES TEMPORELS
@@ -80,7 +80,7 @@ DUREE_DECUMULATION_GBI = 20
 # 7. PARAMÈTRES SIMULATION
 # =============================================================================
 
-NB_SIMULATIONS = 500
+NB_SIMULATIONS = 10000
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 
@@ -117,6 +117,13 @@ PARAMS_CRISE_DETAIL = {
     'facteur_vol': 2.5            # Multiplicateur de volatilité post-choc
 }
 
+# =============================================================================
+# 9. PARAMÈTRES SPÉCIFIQUES À FALEH (Optimisation Stochastique)
+# =============================================================================
+FALEH_NB_TREE_STAGES = 12     # Nombre de points de décision (stages) dans l'arbre
+FALEH_PENALTY_RUINE = 30    # Sévérité de la pénalité si le capital < passif
+FALEH_TARGET_WEALTH = None     # Si None, calculé automatiquement via le salaire final
+
 
 # =============================================================================
 # 10. PARAMÈTRES DRAWDOWN
@@ -133,6 +140,7 @@ PROFILS = {
         "description": "Privilégie la sécurité",
         "equity": "Global Equity USD Hedged",
         "bond": "US Government Bond USD Unhedged",
+        "risk_aversion": 10.0,       # Gamma élevé = Très prudent (Faleh)
         # Target Date
         "allocation_initiale": 0.90,
         "decroissance_annuelle": 0.03,
@@ -143,6 +151,7 @@ PROFILS = {
         "description": "Équilibre sécurité et croissance",
         "equity": "Global Equity USD Hedged",
         "bond": "US Inflation Linked Bond - USD Unhedged",
+        "risk_aversion": 7.0,
         "allocation_initiale": 0.90,
         "decroissance_annuelle": 0.02,
         "fixed_allocation": 0.40
@@ -151,6 +160,7 @@ PROFILS = {
         "description": "Balance risque/rendement",
         "equity": "US Equity USD Unhedged",
         "bond": "USD Corporate Bond - USD Unhedged",
+        "risk_aversion": 4.0,        # Gamma standard (Faleh)
         "allocation_initiale": 0.95,
         "decroissance_annuelle": 0.01,
         "fixed_allocation": 0.60
@@ -159,6 +169,7 @@ PROFILS = {
         "description": "Recherche de performance",
         "equity": "US Equity USD Unhedged",
         "bond": "USD Corporate Bond - USD Unhedged",
+        "risk_aversion": 2.5,
         "allocation_initiale": 1.00,
         "decroissance_annuelle": 0.008,
         "fixed_allocation": 0.80
@@ -167,6 +178,7 @@ PROFILS = {
         "description": "Maximise le rendement",
         "equity": "US Equity USD Unhedged",
         "bond": "US High Yield Bond BB-B - USD Unhedged",
+        "risk_aversion": 1.5,        # Gamma faible = Prêt à tout perdre pour gagner (Faleh)
         "allocation_initiale": 1.00,
         "decroissance_annuelle": 0.005,
         "fixed_allocation": 0.95
@@ -200,12 +212,12 @@ PLOT_TAUX_REMPLACEMENT_REEL = False
 
 #KPI
 
-PRINT_PERFORMANCE_GLOBALE = False   # Affiche le TRI médian et la dispersion
-PRINT_METRIQUES_RISQUE = False     # Affiche Shortfall, VaR, Max Drawdown, Sortino, Max Underwater
+PRINT_PERFORMANCE_GLOBALE = True   # Affiche le TRI médian et la dispersion
+PRINT_METRIQUES_RISQUE = True     # Affiche Shortfall, VaR, Max Drawdown, Sortino, Max Underwater
 
 #Comparaison 
 
-PLOT_COMPARAISON_CAPITAL = False
-PLOT_COMPARAISON_CAPITAL_REEL = True
-PRINT_SYNTHESE_CAPITAL_RETRAITE = False  # Affiche le comparatif final des capitaux à l'âge de retraite
+PLOT_COMPARAISON_CAPITAL = True
+PLOT_COMPARAISON_CAPITAL_REEL = False
+PRINT_SYNTHESE_CAPITAL_RETRAITE = True  # Affiche le comparatif final des capitaux à l'âge de retraite
 

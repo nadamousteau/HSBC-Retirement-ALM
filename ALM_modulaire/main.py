@@ -81,12 +81,17 @@ def main():
             mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _ = engine.run_simulation_gbi(
                 gpi, r_eq, r_bd, dates, idx_split
             )
-        else:
+        else: 
             if strat_actuelle == "TARGET_DATE":
                 strategy = strategies.TargetDateStrategy()
-            else:
+            elif strat_actuelle == "FIXED_MIX":
                 strategy = strategies.FixedMixStrategy()
+            elif strat_actuelle == "FALEH":
+                from src.strategies.faleh_strategy import FalehStrategy
+                strategy = FalehStrategy(mu_e, sigma_e, mu_b, sigma_b, corr_eb)
+                strategy.initialize_tree(dates)
 
+        # Exécution du moteur
             mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire = engine.run_simulation(
                 strategy, r_eq, r_bd, dates
             )

@@ -244,7 +244,7 @@ def plot_comparaison_capital(dates, resultats_dict, reel=False):
     dates_plot = [pd.Timestamp(settings.DATE_DEBUT_T0)] + list(dates)
     
     # Palette de couleurs stricte pour différencier les stratégies
-    couleurs = {"TARGET_DATE": "navy", "FIXED_MIX": "darkred"}
+    couleurs = {"TARGET_DATE": "navy", "FIXED_MIX": "darkred", "GBI": "green", "FALEH": "purple"}
     
     for strat, mat_cap in resultats_dict.items():
         if reel:

@@ -18,6 +18,10 @@ Equity = active_profile["equity"]
 # Logique originale : Bond = profil["bond"]
 Bond = active_profile["bond"]
 
+# On récupère l'aversion au risque (Gamma). 
+# On met 4.0 par défaut (Équilibré) si la clé n'existe pas pour éviter un plantage.
+gamma = active_profile.get("risk_aversion", 4.0)
+
 # Paramètres d'allocation (accessibles directement via active_profile, 
 # mais on peut définir des alias si besoin pour la clarté dans les stratégies)
 allocation_initiale = active_profile.get("allocation_initiale")
