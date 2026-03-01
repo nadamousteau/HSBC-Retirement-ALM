@@ -18,6 +18,7 @@ from .base_strategy import BaseStrategy
 from config import settings, profiles
 from ..economics.gse import EnhancedGSE
 from ..economics.tree_builder import ScenarioTreeBuilder
+import time
 
 
 class FalehStrategy(BaseStrategy):
@@ -41,7 +42,7 @@ class FalehStrategy(BaseStrategy):
     }
     
     def __init__(self, mu_e, sigma_e, mu_b, sigma_b, corr_eb, 
-                 target_wealth=None, nb_tree_stages=10):
+                 target_wealth=None, nb_tree_stages=settings.FALEH_NB_TREE_STAGES):
         """
         Args:
             mu_e, sigma_e, mu_b, sigma_b, corr_eb: Paramètres de marché
@@ -64,7 +65,7 @@ class FalehStrategy(BaseStrategy):
             use_markov_regimes=True  #  CORRECTION
         )
         # Arbre de scénarios
-        self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=5)
+        self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=3)
         self.tree = None
         self.nb_tree_stages = nb_tree_stages
         
@@ -87,7 +88,7 @@ class FalehStrategy(BaseStrategy):
         """
         if self.scenarios_generated:
             return
-        
+                
         nb_periods = len(dates)
         nb_scenarios = settings.NB_SIMULATIONS  # Limite pour performance
         
@@ -96,24 +97,38 @@ class FalehStrategy(BaseStrategy):
         print(f"   • Gamma (aversion risque) : {self.gamma:.2f}")
         print(f"   • Scénarios : {nb_scenarios}")
         print(f"   • Stages : {self.nb_tree_stages}")
-        
-        # Génération des scénarios
+
+        # 1. Génération massive (Vectorisée et rapide via NumPy)
+        # On récupère les trajectoires "Spaghettis"
+        t0=time.time()
         r_eq, r_bd = self.gse.generate_scenarios_simple(
             nb_periods, nb_scenarios, seed=42
         )
-        
-        # Construction de l'arbre
+        t1=time.time()
+        print(f"   • Scénarios générés en {t1-t0:.2f} secondes")
+
+        # 2. Construction de l'arbre RÉCURSIVE
+        # C'est ici que ScenarioTreeBuilder va utiliser K-Means à chaque embranchement
+        # pour réduire les 50 000 trajectoires en N branches gérables (ex: 5 par nœud)
         self.tree = self.tree_builder.build_tree(
-            r_eq, r_bd, nb_stages=self.nb_tree_stages
+            r_eq, 
+            r_bd, 
+            nb_stages=self.nb_tree_stages
         )
-        
-        # Affichage structure
+        t2=time.time()
+        print(f"   • Arbre construit en {t2-t1:.2f} secondes")
+    
+
+        # 3. Visualisation de la compression
         self.tree_builder.visualize_tree_structure(self.tree)
-        
-        # Pré-calcul des allocations optimales par stage
+
+        # 4. Calcul des décisions optimales (Backward Induction)
         self._precompute_optimal_allocations()
-        
+        t3=time.time()
+        print(f"   • Allocations optimales pré-calculées en {t3-t2:.2f} secondes")
+
         self.scenarios_generated = True
+        
     
     def get_allocation(self, t_index, current_age):
         """

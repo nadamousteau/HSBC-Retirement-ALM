@@ -5,7 +5,7 @@ from pathlib import Path
 # 0. STRATÉGIE GLOBALE ET BENCHMARKING
 # =============================================================================
 MODE_COMPARAISON = True                     # Si True, exécute et compare les stratégies listées
-STRATEGIES_A_COMPARER = ["TARGET_DATE", "FIXED_MIX", "GBI", "FALEH"]  # Liste des stratégies à comparer (doit être subset de PROFILS.keys() + "FALEH")
+STRATEGIES_A_COMPARER = ["GBI", "FALEH"]  # Liste des stratégies à comparer (doit être subset de PROFILS.keys() + "FALEH")
 METHODE_DEFAUT = "GBI"              # Utilisée si MODE_COMPARAISON = False
 
 
@@ -28,7 +28,7 @@ CSV_YIELD_CURVE = INPUTS_DIR / "yield-curve-rates-1990-2024.csv"
 # =============================================================================
 
 
-PROFIL_CHOISI = "MODERE"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
+PROFIL_CHOISI = "AGRESSIF"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
 
 # =============================================================================
 # 3. PARAMÈTRES TEMPORELS
@@ -80,7 +80,7 @@ DUREE_DECUMULATION_GBI = 20
 # 7. PARAMÈTRES SIMULATION
 # =============================================================================
 
-NB_SIMULATIONS = 500
+NB_SIMULATIONS = 50000
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 
@@ -120,8 +120,8 @@ PARAMS_CRISE_DETAIL = {
 # =============================================================================
 # 9. PARAMÈTRES SPÉCIFIQUES À FALEH (Optimisation Stochastique)
 # =============================================================================
-FALEH_NB_TREE_STAGES = 12     # Nombre de points de décision (stages) dans l'arbre
-FALEH_PENALTY_RUINE = 30    # Sévérité de la pénalité si le capital < passif
+FALEH_NB_TREE_STAGES = 10    # Nombre de points de décision (stages) dans l'arbre
+FALEH_PENALTY_RUINE = 50   # Sévérité de la pénalité si le capital < passif
 FALEH_TARGET_WEALTH = None     # Si None, calculé automatiquement via le salaire final
 
 
@@ -189,11 +189,11 @@ PROFILS = {
 # 12. VISUALISATION
 # =============================================================================
 
-PLOT_CAPITAL = True
+PLOT_CAPITAL = False
 PLOT_SALAIRE = False
 PLOT_APPORTS = False
 
-PLOT_CAPITAL_REEL = True
+PLOT_CAPITAL_REEL = False
 PLOT_SALAIRE_REEL = False
 PLOT_APPORTS_REEL = False
 
@@ -217,7 +217,7 @@ PRINT_METRIQUES_RISQUE = True     # Affiche Shortfall, VaR, Max Drawdown, Sortin
 
 #Comparaison 
 
-PLOT_COMPARAISON_CAPITAL = True
+PLOT_COMPARAISON_CAPITAL = False
 PLOT_COMPARAISON_CAPITAL_REEL = False
 PRINT_SYNTHESE_CAPITAL_RETRAITE = True  # Affiche le comparatif final des capitaux à l'âge de retraite
 
