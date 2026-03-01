@@ -80,7 +80,7 @@ DUREE_DECUMULATION_GBI = 20
 # 7. PARAMÈTRES SIMULATION
 # =============================================================================
 
-NB_SIMULATIONS = 10000
+NB_SIMULATIONS = 500
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 
