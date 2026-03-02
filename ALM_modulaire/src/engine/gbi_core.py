@@ -7,8 +7,8 @@ l'allocation à chaque pas de temps.
 
 Approche hybride backtest/forecast :
   - Phase backtest  : betas calculés via la courbe des taux réelle (déterministe)
-  - Phase forecast  : betas propagés par sim via le rendement obligataire
-                      (proxy LDI : r_bond ≈ d(beta)/beta)
+    - Phase forecast  : betas propagés via l'Excel Nominal Forecast
+                                            avec fallback sur le rendement obligataire simulé.
 
 Contributions & salaire : identiques au moteur standard (calculer_apport_exponentiel).
 Glide path TDF          : identique à TargetDateStrategy (profiles.allocation_initiale).
@@ -17,6 +17,7 @@ Glide path TDF          : identique à TargetDateStrategy (profiles.allocation_i
 import numpy as np
 import pandas as pd
 from config import settings, profiles
+from data import loader
 from src.liabilities import contributions
 
 
@@ -26,8 +27,8 @@ def _compute_beta_matrix(gpi, dates, idx_split, r_bd, nb_sims):
 
     - Période backtest [0, idx_split[   : même beta pour toutes les simulations
                                          (courbe des taux historique réelle)
-    - Période forecast [idx_split, end[ : beta diverge par sim via r_bd comme proxy
-                                         beta(t+1) = beta(t) * (1 + r_bd(t))
+    - Période forecast [idx_split, end[ : beta piloté par les taux Nominal Forecast
+                                         (fallback: r_bd simulé)
     """
     nb_periods = len(dates)
     beta_matrix = np.zeros((nb_periods, nb_sims))
@@ -40,10 +41,21 @@ def _compute_beta_matrix(gpi, dates, idx_split, r_bd, nb_sims):
         # Aucun historique : initialiser avec la première date forecast
         beta_matrix[0, :] = gpi.calculate(dates[0])
 
-    # ── Forecast : propagation par simulation ───────────────────────────────
+    # ── Forecast : propagation via Excel Nominal Forecast (si disponible) ───
     forecast_start = max(idx_split, 1)
-    for t in range(forecast_start, nb_periods):
-        beta_matrix[t, :] = beta_matrix[t - 1, :] * (1.0 + r_bd[t - 1, :])
+    nb_forecast = max(0, nb_periods - forecast_start)
+    annual_rates = loader.load_gbi_nominal_forecast_monthly_rates(nb_forecast) if nb_forecast > 0 else None
+
+    if annual_rates is not None and len(annual_rates) == nb_forecast:
+        # Déterministe (identique pour toutes les simulations)
+        monthly_proxy_returns = np.exp(annual_rates / 12.0) - 1.0
+        for t in range(forecast_start, nb_periods):
+            r_proxy = monthly_proxy_returns[t - forecast_start]
+            beta_matrix[t, :] = beta_matrix[t - 1, :] * (1.0 + r_proxy)
+    else:
+        # Fallback historique : proxy via rendements obligataires simulés
+        for t in range(forecast_start, nb_periods):
+            beta_matrix[t, :] = beta_matrix[t - 1, :] * (1.0 + r_bd[t - 1, :])
 
     beta_matrix = np.maximum(beta_matrix, 1e-6)
     return beta_matrix

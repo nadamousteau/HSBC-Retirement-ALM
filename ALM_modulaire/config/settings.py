@@ -5,7 +5,7 @@ from pathlib import Path
 # 0. STRATÉGIE GLOBALE ET BENCHMARKING
 # =============================================================================
 MODE_COMPARAISON = True                     # Si True, exécute et compare les stratégies listées
-STRATEGIES_A_COMPARER = ["GBI", "FALEH"]  # Liste des stratégies à comparer (doit être subset de PROFILS.keys() + "FALEH")
+STRATEGIES_A_COMPARER = ["GBI", "FALEH" ,"FIXED_MIXED" , "TARGET_DATE"]  # Liste des stratégies à comparer (doit être subset de PROFILS.keys() + "FALEH")
 METHODE_DEFAUT = "GBI"              # Utilisée si MODE_COMPARAISON = False
 
 
@@ -28,7 +28,7 @@ CSV_YIELD_CURVE = INPUTS_DIR / "yield-curve-rates-1990-2024.csv"
 # =============================================================================
 
 
-PROFIL_CHOISI = "AGRESSIF"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
+PROFIL_CHOISI = "EQUILIBRE"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
 
 # =============================================================================
 # 3. PARAMÈTRES TEMPORELS
