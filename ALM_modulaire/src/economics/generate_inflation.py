@@ -33,10 +33,9 @@ class Inflation:
         self.n_months = (self.dt_end.year - self.dt_start.year) * 12 + (self.dt_end.month - self.dt_start.month)
         self.last_hist_year = int(self.hist_inf['Year'].max())
 
-    def _get_quantiles(self, mode='inflation'):
+        def _get_quantiles(self, mode='inflation'):
         
         # Identification des années à couvrir
-        current_year = self.dt_start.year
         years_needed = []
         temp_date = self.dt_start
         for _ in range(self.n_months):
@@ -52,19 +51,25 @@ class Inflation:
         # Simulation des années futures
         future_years = [y for y in unique_years if y > self.last_hist_year]
         if future_years:
-            n_sim = len(future_years)
-            paths = np.zeros((n_sim, n_sim))
-            curr_pi = np.full(n_sim, last_val)
+            n_steps = len(future_years)
+            n_paths = self.n_sim  # Utilisation correcte du nombre de trajectoires
+            
+            # Matrice des trajectoires : (Trajectoires, Pas de temps)
+            paths = np.zeros((n_paths, n_steps))
+            curr_pi = np.full(n_paths, last_val)
             
             # Constantes de discrétisation exacte (dt = 1 an)
             phi = np.exp(-self.kappa)
             vol_term = np.sqrt((self.sigma**2 / (2 * self.kappa)) * (1 - np.exp(-2 * self.kappa)))
             
-            for t in range(n_sim):
-                z = np.random.standard_normal(n_sim)
-                curr_pi = curr_pi * phi + self.theta * (1 - phi) + vol_term * z
+            # Pré-allocation matricielle des chocs gaussiens
+            Z = np.random.standard_normal((n_steps, n_paths))
+            
+            for t in range(n_steps):
+                # Vectorisation sur les n_paths trajectoires
+                curr_pi = curr_pi * phi + self.theta * (1 - phi) + vol_term * Z[t]
                 
-                # Transformation pour le Livret A si nécessaire avant calcul des quantiles
+                # Sauvegarde de la coupe transversale à l'instant t
                 if mode == 'livret_a':
                     paths[:, t] = np.maximum(curr_pi + 0.005, 0.005)
                 else:
@@ -72,8 +77,8 @@ class Inflation:
             
             # Calcul des statistiques par année simulée
             stats = {
-                y: [np.median(paths[:, i]), np.quantile(paths[:, i], 0.05), np.quantile(paths[:, i], 0.95)]
-                for i, y in enumerate(future_years)
+                future_years[t]: [np.median(paths[:, t]), np.quantile(paths[:, t], 0.05), np.quantile(paths[:, t], 0.95)]
+                for t in range(n_steps)
             }
             sim_results.update(stats)
 
@@ -91,6 +96,7 @@ class Inflation:
                 matrix[:, m] = sim_results[yr]
                 
         return matrix
+
 
     def inflation(self):
         """Retourne la matrice d'inflation (Médiane, P5, P95)."""
