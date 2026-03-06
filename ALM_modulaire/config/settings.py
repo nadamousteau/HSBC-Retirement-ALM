@@ -76,11 +76,26 @@ DUREE_DECUMULATION_GBI = 20
 # Contributions et salaire : identiques aux stratégies TARGET_DATE / FIXED_MIX
 # Glide path TDF           : identique à TargetDateStrategy (profiles.allocation_initiale)
 
+# Graine aléatoire pour la reproductibilité de la simulation NS-VAR(1)
+GBI_SEED = 42
+
+# Calibration custom du modèle Nelson-Siegel + VAR(1) :
+# Décommenter et modifier pour surcharger les valeurs par défaut (Diebold-Li).
+# GBI_NS_VAR_CALIBRATION = {
+#     'beta0_init': 0.045,    # Niveau long terme initial
+#     'beta1_init': -0.020,   # Pente initiale
+#     'beta2_init': -0.010,   # Courbure initiale
+#     'lam': 0.0609,          # Paramètre de décroissance NS
+#     'A': np.array([[0.998, 0., 0.], [0., 0.990, 0.], [0., 0., 0.980]]),
+#     'b': (np.eye(3) - A) @ np.array([0.045, -0.020, -0.010]),
+#     'Sigma': <cholesky_matrix>,
+# }
+
 # =============================================================================
 # 7. PARAMÈTRES SIMULATION
 # =============================================================================
 
-NB_SIMULATIONS = 50000
+NB_SIMULATIONS = 5000
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 

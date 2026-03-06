@@ -11,6 +11,7 @@ from src import economics, liabilities, strategies, engine, analytics
 from src.analytics import plotting
 from src.economics.yield_curve import YieldCurveBuilder
 from src.liabilities.goal_price_index import GoalPriceIndex
+from src.economics.nelson_siegel_var import simulate_gbi_monte_carlo
 
 
 def main():
@@ -48,22 +49,36 @@ def main():
             print(f"ATTENTION : La date de crise ({settings.DATE_CRISE}) précède ou égale la date pivot ({settings.DATE_PIVOT_BACKTEST}). Le choc a été ignoré.")
 
     # =========================================================================
-    # 2b. INITIALISATION GBI (yield curve + GoalPriceIndex)
+    # 2b. INITIALISATION GBI (historique + Nelson-Siegel VAR(1) forecast)
     # =========================================================================
     gpi = None
+    gbi_tensor = None
 
     mode_comparaison = getattr(settings, 'MODE_COMPARAISON', False)
     strategies_run = settings.STRATEGIES_A_COMPARER if mode_comparaison else [settings.METHODE_DEFAUT]
 
     if "GBI" in strategies_run:
+        # Courbe des taux historique pour le backtest
         yc = YieldCurveBuilder().load_from_csv(settings.CSV_YIELD_CURVE)
         gpi = GoalPriceIndex(
             yield_curve=yc,
             retirement_date=settings.DATE_RETRAITE_GBI,
             dec_years=settings.DUREE_DECUMULATION_GBI
         )
-        print(f"GBI : Courbe des taux chargee ({len(yc.dates)} observations), "
-              f"GPI retraite {settings.DATE_RETRAITE_GBI}, "
+
+        # Nelson-Siegel + VAR(1) pour le forecast uniquement
+        nb_forecast = max(0, settings.NB_PERIODES_TOTAL - max(idx_split, 1))
+        if nb_forecast > 0:
+            gbi_tensor, gbi_factors, gbi_tau_grid = simulate_gbi_monte_carlo(
+                nb_sims=settings.NB_SIMULATIONS,
+                nb_months=nb_forecast,
+                seed=getattr(settings, 'GBI_SEED', 42),
+            )
+
+        print(f"GBI : Courbe historique ({len(yc.dates)} obs) + "
+              f"NS-VAR(1) forecast ({nb_forecast} mois, "
+              f"{settings.NB_SIMULATIONS} sims x 360 maturites), "
+              f"retraite {settings.DATE_RETRAITE_GBI}, "
               f"plancher {settings.FLOOR_PERCENT_GBI*100:.0f}%")
 
     # =========================================================================
@@ -79,7 +94,7 @@ def main():
         # ── Dispatch vers le bon moteur ──────────────────────────────────────
         if strat_actuelle == "GBI":
             mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _ = engine.run_simulation_gbi(
-                gpi, r_eq, r_bd, dates, idx_split
+                gpi, gbi_tensor, r_eq, r_bd, dates, idx_split
             )
         else: 
             if strat_actuelle == "TARGET_DATE":
