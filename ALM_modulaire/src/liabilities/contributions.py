@@ -1,5 +1,82 @@
 
 import numpy as np
+from config import settings
+
+
+# =============================================================================
+# Fonctions standalone utilisées par les moteurs de simulation (core.py, gbi_core.py)
+# =============================================================================
+
+def precalculer_parametres_apport_exponentiel(salaire_initial, salaire_max_cible, nb_annees_accumulation):
+    """
+    Calcule les paramètres de la courbe exponentielle d'apport mensuel.
+
+    Args:
+        salaire_initial         : Salaire de départ (EUR/mois)
+        salaire_max_cible       : Salaire maximum cible (EUR/mois)
+        nb_annees_accumulation  : Durée totale de la phase d'accumulation (années)
+
+    Returns:
+        app_init  : Apport mensuel initial (EUR)
+        app_max   : Apport mensuel maximum (EUR)
+        t_pic     : Temps (en années) auquel l'apport atteint son maximum
+    """
+    ratio = salaire_max_cible / salaire_initial
+    facteur = ratio ** settings.GAMMA_ELASTICITE
+    app_init = salaire_initial * settings.TAUX_APPORT_BASE
+    app_max = app_init * facteur
+
+    s_cible = salaire_initial + (salaire_max_cible - salaire_initial) * settings.SEUIL_MATURITE
+
+    if s_cible >= salaire_max_cible:
+        t_pic = float(nb_annees_accumulation)
+    else:
+        val_log = 1.0 - min(
+            (s_cible - salaire_initial) / max(1.0, (salaire_max_cible - salaire_initial)),
+            0.9999
+        )
+        t_pic = -np.log(val_log) / settings.VITESSE_PROGRESSION
+
+    return app_init, app_max, float(np.clip(t_pic, 0.0, float(nb_annees_accumulation)))
+
+
+def calculer_apport_exponentiel(t_annees, app_init, app_max, t_pic):
+    """
+    Calcule l'apport mensuel au temps t selon une croissance exponentielle
+    plafonnée à app_max à partir de t_pic.
+
+    Args:
+        t_annees : Temps écoulé depuis le début (années)
+        app_init : Apport mensuel initial (EUR)
+        app_max  : Apport mensuel maximum (EUR)
+        t_pic    : Temps (années) auquel l'apport atteint app_max
+
+    Returns:
+        Apport mensuel (EUR) au temps t_annees
+    """
+    if t_pic <= 0.0 or app_init <= 0.0:
+        return float(app_max)
+    r = np.log(app_max / app_init) / t_pic
+    return float(min(app_init * np.exp(r * t_annees), app_max))
+
+
+def estimer_salaire_saturation(t_annees, salaire_initial, salaire_max_cible):
+    """
+    Estime le salaire au temps t selon une courbe de saturation exponentielle.
+
+    Args:
+        t_annees          : Temps écoulé depuis le début (années)
+        salaire_initial   : Salaire de départ (EUR/mois)
+        salaire_max_cible : Salaire maximum cible (EUR/mois)
+
+    Returns:
+        Salaire estimé (EUR/mois) au temps t_annees
+    """
+    facteur = 1.0 - np.exp(-settings.VITESSE_PROGRESSION * t_annees)
+    return float(salaire_initial + (salaire_max_cible - salaire_initial) * facteur)
+
+
+# =============================================================================
 
 class HumanCapitalCurve:
     """
@@ -104,7 +181,7 @@ class HumanCapitalCurve:
         """
         ratio = s_max / s_init
         facteur = ratio ** 1.5
-        app_init = s_init * self.taux_apport_depart
+        app_init = s_init * self.contrib_depart
         app_max = app_init * facteur
         
         # Calcul du temps de pic (t_pic) via la dynamique de progression
