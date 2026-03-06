@@ -19,26 +19,11 @@ Glide path TDF          : identique a TargetDateStrategy (profiles.allocation_in
 import numpy as np
 import pandas as pd
 from config import settings, profiles
-from src.liabilities.contributions import precalculer_parametres_apport_exponentiel
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Fonctions de contribution autonomes (identiques a core.py)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
-def _calculer_apport(t_annees, app_init, app_max, t_pic):
-    """Calcule l'apport mensuel a un instant t (annees)."""
-    if t_pic <= 0:
-        return app_init
-    a = (app_init - app_max) / (t_pic ** 2)
-    return max(0.0, a * (t_annees - t_pic) ** 2 + app_max)
-
-
-def _estimer_salaire(t_annees, s_init, s_max):
-    """Estime le salaire par saturation exponentielle."""
-    return s_max - (s_max - s_init) * np.exp(-0.10 * t_annees)
+from src.liabilities.contributions import (
+    precalculer_parametres_apport_exponentiel,
+    calculer_apport_exponentiel as _calculer_apport,
+    estimer_salaire_saturation as _estimer_salaire,
+)
 
 
 def _compute_beta_matrix(gpi, dates, idx_split, gbi_curves, tau, nb_sims):
