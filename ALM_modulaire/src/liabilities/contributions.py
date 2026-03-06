@@ -98,13 +98,13 @@ class HumanCapitalCurve:
 
         return matrice_salaire
     
-    def _precalculer_parametres_apport(self, s_init: float, s_max: float, duree_totale: float):
+    def precalculer_parametres_apport_exponentiel(self, s_init: float, s_max: float, duree_totale: float):
         """
         Calcule les paramètres de la courbe quadratique d'apport.
         """
         ratio = s_max / s_init
         facteur = ratio ** 1.5
-        app_init = s_init * self.taux_apport_depart
+        app_init = s_init * self.contrib_depart
         app_max = app_init * facteur
         
         # Calcul du temps de pic (t_pic) via la dynamique de progression
@@ -132,7 +132,7 @@ class HumanCapitalCurve:
 
         for i in range(n_scenarios):
             s_traj = matrice_salaires[i]
-            app_init, app_max, t_pic = self._precalculer_parametres_apport(
+            app_init, app_max, t_pic = self.precalculer_parametres_apport_exponentiel(
                 s_traj[0], s_traj[-1], duree_ans
             )
             
@@ -148,3 +148,33 @@ class HumanCapitalCurve:
             matrice_apports[i, :] = np.maximum(apports, 0.0)
 
         return matrice_apports
+
+
+# =============================================================================
+# Fonctions standalone (rétrocompatibilité avec core.py / gbi_core.py)
+# =============================================================================
+
+def precalculer_parametres_apport_exponentiel(s_init, s_max, duree_totale):
+    from config import settings
+    ratio = s_max / s_init
+    facteur = ratio ** 1.5
+    app_init = s_init * settings.TAUX_APPORT_BASE
+    app_max = app_init * facteur
+    s_cible = s_init + (s_max - s_init) * 0.935
+    if s_cible >= s_max:
+        t_pic = duree_totale
+    else:
+        val_log = 1 - min((s_cible - s_init) / max(1.0, (s_max - s_init)), 0.9999)
+        t_pic = -np.log(val_log) / 0.10
+    return app_init, app_max, np.clip(t_pic, 0, duree_totale)
+
+
+def calculer_apport_exponentiel(t, app_init, app_max, t_pic):
+    if t_pic <= 0:
+        return app_init
+    a = (app_init - app_max) / (t_pic ** 2)
+    return max(0.0, a * (t - t_pic) ** 2 + app_max)
+
+
+def estimer_salaire_saturation(t, s_init, s_max):
+    return s_init + (s_max - s_init) * (1 - np.exp(-0.10 * t))

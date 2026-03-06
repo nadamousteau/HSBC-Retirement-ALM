@@ -113,16 +113,19 @@ def main():
         gain_p5_reel = capital_p5_reel - total_investi
 
         dernier_salaire = hist_salaire[-1]
+        """
         taux_remp, mat_cap_retraite = liabilities.decumulation.simuler_decumulation(
             capitaux_finaux, dernier_salaire, settings.TAUX_LIVRET_A, settings.DUREE_RETRAITE
-        )
+        )"""
 
         # Sauvegarde des résultats
         resultats_comparaison[strat_actuelle] = mat_cap
         dernier_contexte = {
             "courbe_investi": courbe_investi, "hist_apport": hist_apport,
-            "hist_salaire": hist_salaire, "taux_remp": taux_remp,
-            "mat_cap_retraite": mat_cap_retraite, "mat_cap": mat_cap
+            "hist_salaire": hist_salaire, 
+            # "taux_remp": taux_remp,
+            #"mat_cap_retraite": mat_cap_retraite, 
+            "mat_cap": mat_cap
         }
 
         # =========================================================================
@@ -160,8 +163,8 @@ def main():
     hist_salaire = dernier_contexte["hist_salaire"]
     hist_apport = dernier_contexte["hist_apport"]
     mat_cap = dernier_contexte["mat_cap"]
-    taux_remp = dernier_contexte["taux_remp"]
-    mat_cap_retraite = dernier_contexte["mat_cap_retraite"]
+    #taux_remp = dernier_contexte["taux_remp"]
+    #mat_cap_retraite = dernier_contexte["mat_cap_retraite"]
 
     # Graphiques d'accumulation (Comparatifs ou Isolés)
     if mode_comparaison:
@@ -193,16 +196,17 @@ def main():
             plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=False)
         if getattr(settings, 'PLOT_CRISE_CAPITAL_REEL', False):
             plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=True)
-
+    """
     if getattr(settings, 'PLOT_RETRAITE_CAPITAL', False):
-        plotting.plot_retraite_capital(mat_cap_retraite, reel=False)
+        #plotting.plot_retraite_capital(mat_cap_retraite, reel=False)
     if getattr(settings, 'PLOT_RETRAITE_CAPITAL_REEL', False):
-        plotting.plot_retraite_capital(mat_cap_retraite, reel=True)
+        #plotting.plot_retraite_capital(mat_cap_retraite, reel=True)
 
     if getattr(settings, 'PLOT_TAUX_REMPLACEMENT', False):
-        plotting.plot_taux_remplacement(taux_remp, reel=False)
+        #plotting.plot_taux_remplacement(taux_remp, reel=False)
     if getattr(settings, 'PLOT_TAUX_REMPLACEMENT_REEL', False):
-        plotting.plot_taux_remplacement(taux_remp, reel=True)
+        #plotting.plot_taux_remplacement(taux_remp, reel=True)
+    """
 
     # =========================================================================
     # 6. SYNTHÈSE DES CAPITAUX À LA RETRAITE (Console)
