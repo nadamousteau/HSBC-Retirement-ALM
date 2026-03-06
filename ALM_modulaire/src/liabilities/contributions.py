@@ -98,7 +98,7 @@ class HumanCapitalCurve:
 
         return matrice_salaire
     
-    def _precalculer_parametres_apport(self, s_init: float, s_max: float, duree_totale: float):
+    def precalculer_parametres_apport_exponentiel(self, s_init: float, s_max: float, duree_totale: float):
         """
         Calcule les paramètres de la courbe quadratique d'apport.
         """

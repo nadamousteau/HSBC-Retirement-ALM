@@ -76,11 +76,23 @@ DUREE_DECUMULATION_GBI = 20
 # Contributions et salaire : identiques aux stratégies TARGET_DATE / FIXED_MIX
 # Glide path TDF           : identique à TargetDateStrategy (profiles.allocation_initiale)
 
+# Nelson-Siegel + VAR(1) : parametres de simulation des courbes GBI
+# Lambda NS (Diebold-Li optimal ~ 0.0609)
+GBI_NS_LAMBDA = 0.0609
+
+# Facteurs NS initiaux : (beta0=niveau, beta1=pente, beta2=courbure)
+# beta0 ~ 4.5% (taux long), beta1 ~ -2% (pente negative = courbe normale),
+# beta2 ~ 1% (bosse de courbure)
+GBI_NS_BETA0_INIT = [0.045, -0.020, 0.010]
+
+# Seed pour la reproductibilite des simulations GBI (None = aleatoire)
+GBI_NS_SEED = 42
+
 # =============================================================================
 # 7. PARAMÈTRES SIMULATION
 # =============================================================================
 
-NB_SIMULATIONS = 50000
+NB_SIMULATIONS = 5000
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 

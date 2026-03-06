@@ -10,6 +10,7 @@ from data import loader
 from src import economics, liabilities, strategies, engine, analytics
 from src.analytics import plotting
 from src.economics.yield_curve import YieldCurveBuilder
+from src.economics.gbi_nelson_siegel import simulate_gbi_curves
 from src.liabilities.goal_price_index import GoalPriceIndex
 
 
@@ -48,9 +49,11 @@ def main():
             print(f"ATTENTION : La date de crise ({settings.DATE_CRISE}) précède ou égale la date pivot ({settings.DATE_PIVOT_BACKTEST}). Le choc a été ignoré.")
 
     # =========================================================================
-    # 2b. INITIALISATION GBI (yield curve + GoalPriceIndex)
+    # 2b. INITIALISATION GBI (yield curve + GoalPriceIndex + NS-VAR Monte Carlo)
     # =========================================================================
     gpi = None
+    gbi_curves = None
+    gbi_tau = None
 
     mode_comparaison = getattr(settings, 'MODE_COMPARAISON', False)
     strategies_run = settings.STRATEGIES_A_COMPARER if mode_comparaison else [settings.METHODE_DEFAUT]
@@ -62,9 +65,23 @@ def main():
             retirement_date=settings.DATE_RETRAITE_GBI,
             dec_years=settings.DUREE_DECUMULATION_GBI
         )
+
+        # Simulation des courbes GBI via Nelson-Siegel + VAR(1)
+        nb_forecast = max(0, settings.NB_PERIODES_TOTAL - idx_split)
+        if nb_forecast > 0:
+            beta0_init = np.array(settings.GBI_NS_BETA0_INIT)
+            gbi_curves, _, gbi_tau = simulate_gbi_curves(
+                nb_sims=settings.NB_SIMULATIONS,
+                nb_months=nb_forecast,
+                beta0_init=beta0_init,
+                lam=settings.GBI_NS_LAMBDA,
+                seed=getattr(settings, 'GBI_NS_SEED', None)
+            )
+
         print(f"GBI : Courbe des taux chargee ({len(yc.dates)} observations), "
               f"GPI retraite {settings.DATE_RETRAITE_GBI}, "
-              f"plancher {settings.FLOOR_PERCENT_GBI*100:.0f}%")
+              f"plancher {settings.FLOOR_PERCENT_GBI*100:.0f}%, "
+              f"NS-VAR Monte Carlo ({settings.NB_SIMULATIONS} sims, {nb_forecast} mois forecast)")
 
     # =========================================================================
     # 3. BOUCLE D'ÉVALUATION DES STRATÉGIES
@@ -79,7 +96,7 @@ def main():
         # ── Dispatch vers le bon moteur ──────────────────────────────────────
         if strat_actuelle == "GBI":
             mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _ = engine.run_simulation_gbi(
-                gpi, r_eq, r_bd, dates, idx_split
+                gpi, r_eq, r_bd, dates, idx_split, gbi_curves=gbi_curves, tau=gbi_tau
             )
         else: 
             if strat_actuelle == "TARGET_DATE":
@@ -113,16 +130,18 @@ def main():
         gain_p5_reel = capital_p5_reel - total_investi
 
         dernier_salaire = hist_salaire[-1]
+        """
         taux_remp, mat_cap_retraite = liabilities.decumulation.simuler_decumulation(
             capitaux_finaux, dernier_salaire, settings.TAUX_LIVRET_A, settings.DUREE_RETRAITE
         )
-
+        """
         # Sauvegarde des résultats
         resultats_comparaison[strat_actuelle] = mat_cap
         dernier_contexte = {
             "courbe_investi": courbe_investi, "hist_apport": hist_apport,
-            "hist_salaire": hist_salaire, "taux_remp": taux_remp,
-            "mat_cap_retraite": mat_cap_retraite, "mat_cap": mat_cap
+            #"hist_salaire": hist_salaire, "taux_remp": taux_remp,
+            #"mat_cap_retraite": mat_cap_retraite, 
+            "mat_cap": mat_cap
         }
 
         # =========================================================================
