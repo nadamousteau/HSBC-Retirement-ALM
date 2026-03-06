@@ -1,5 +1,70 @@
 
 import numpy as np
+from config import settings
+
+
+def precalculer_parametres_apport_exponentiel(
+    salaire_initial: float,
+    salaire_max_cible: float,
+    nb_annees_accumulation: float
+):
+    """
+    Pré-calcule les paramètres de la courbe d'apport exponentielle à saturation.
+
+    Returns:
+        app_init  : apport mensuel initial (EUR)
+        app_max   : apport mensuel au pic (EUR)
+        t_pic     : temps (en années) pour atteindre le seuil de maturité
+    """
+    ratio   = salaire_max_cible / max(salaire_initial, 1e-9)
+    facteur = ratio ** settings.GAMMA_ELASTICITE
+    app_init = salaire_initial * settings.TAUX_APPORT_BASE
+    app_max  = app_init * facteur
+
+    s_cible = salaire_initial + (salaire_max_cible - salaire_initial) * settings.SEUIL_MATURITE
+    if s_cible >= salaire_max_cible:
+        t_pic = float(nb_annees_accumulation)
+    else:
+        val_log = 1.0 - min(
+            (s_cible - salaire_initial) / max(1.0, salaire_max_cible - salaire_initial),
+            0.9999
+        )
+        t_pic = -np.log(val_log) / settings.VITESSE_PROGRESSION
+
+    return app_init, app_max, float(np.clip(t_pic, 0.0, nb_annees_accumulation))
+
+
+def calculer_apport_exponentiel(
+    t_annees: float,
+    app_init: float,
+    app_max: float,
+    t_pic: float
+) -> float:
+    """
+    Retourne l'apport mensuel au temps t_annees via une saturation exponentielle.
+
+    La courbe croît de app_init vers app_max, atteignant settings.SEUIL_MATURITE
+    de son amplitude à t = t_pic.
+    """
+    if t_pic <= 0.0:
+        return float(app_init)
+    apport = app_init + (app_max - app_init) * (1.0 - np.exp(-settings.VITESSE_PROGRESSION * t_annees))
+    return float(max(apport, 0.0))
+
+
+def estimer_salaire_saturation(
+    t_annees: float,
+    salaire_initial: float,
+    salaire_max_cible: float
+) -> float:
+    """
+    Estime le salaire au temps t_annees via une saturation exponentielle.
+    """
+    salaire = salaire_initial + (salaire_max_cible - salaire_initial) * (
+        1.0 - np.exp(-settings.VITESSE_PROGRESSION * t_annees)
+    )
+    return float(salaire)
+
 
 class HumanCapitalCurve:
     """
