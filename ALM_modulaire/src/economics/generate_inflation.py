@@ -33,7 +33,7 @@ class Inflation:
         self.n_months = (self.dt_end.year - self.dt_start.year) * 12 + (self.dt_end.month - self.dt_start.month)
         self.last_hist_year = int(self.hist_inf['Year'].max())
 
-        def _get_quantiles(self, mode='inflation'):
+    def _get_quantiles(self, mode='inflation', raw_paths=False): 
         
         # Identification des années à couvrir
         years_needed = []
@@ -52,7 +52,7 @@ class Inflation:
         future_years = [y for y in unique_years if y > self.last_hist_year]
         if future_years:
             n_steps = len(future_years)
-            n_paths = self.n_sim  # Utilisation correcte du nombre de trajectoires
+            n_paths = self.n_sim  
             
             # Matrice des trajectoires : (Trajectoires, Pas de temps)
             paths = np.zeros((n_paths, n_steps))
@@ -74,15 +74,35 @@ class Inflation:
                     paths[:, t] = np.maximum(curr_pi + 0.005, 0.005)
                 else:
                     paths[:, t] = curr_pi
-            
-            # Calcul des statistiques par année simulée
+
+            # Si on demande les trajectoires brutes, on s'arrête ici
+            if raw_paths:
+                # On crée la matrice "en escalier" (n_sim, n_months)
+                raw_matrix = np.zeros((self.n_sim, self.n_months))
+                for m in range(self.n_months):
+                    yr = years_needed[m]
+                    if yr <= self.last_hist_year:
+                        # Période historique : on met la même valeur pour toutes les simulations
+                        df = self.hist_inf if mode == 'inflation' else self.hist_la
+                        val = df[df['Year'] == yr]['Rate'].values[0]
+                        raw_matrix[:, m] = val
+                    else:
+                        # Période simulée : on va chercher l'année correspondante
+                        t_idx = future_years.index(yr)
+                        raw_matrix[:, m] = paths[:, t_idx]
+                
+                # On retourne les trajectoires brutes (transposées pour avoir [n_months, n_sims] 
+                # si c'est ce format qu'utilise ta fonction Merton, sinon enlève le .T)
+                return raw_matrix.T
+
+            # Calcul des statistiques par année simulée (s'exécute uniquement si raw_paths=False)
             stats = {
                 future_years[t]: [np.median(paths[:, t]), np.quantile(paths[:, t], 0.05), np.quantile(paths[:, t], 0.95)]
                 for t in range(n_steps)
             }
             sim_results.update(stats)
 
-        # Construction de la matrice finale (3, n_months)
+        # Construction de la matrice finale des quantiles (3, n_months)
         matrix = np.zeros((3, self.n_months))
         for m in range(self.n_months):
             yr = years_needed[m]
@@ -97,7 +117,6 @@ class Inflation:
                 
         return matrix
 
-
     def inflation(self):
         """Retourne la matrice d'inflation (Médiane, P5, P95)."""
         return self._get_quantiles(mode='inflation')
@@ -106,3 +125,6 @@ class Inflation:
         """Retourne la matrice du taux Livret A (Médiane, P5, P95)."""
         return self._get_quantiles(mode='livret_a')
 
+    def trajectoires_brutes_inflation(self):
+        """Retourne les trajectoires simulées (n_sims, n_annees) pour les chocs."""
+        return self._get_quantiles(mode='inflation', raw_paths=True)

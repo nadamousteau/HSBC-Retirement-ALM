@@ -12,6 +12,7 @@ from src.analytics import plotting
 from src.economics.yield_curve import YieldCurveBuilder
 from src.liabilities.goal_price_index import GoalPriceIndex
 from src.economics.nelson_siegel_var import simulate_gbi_monte_carlo
+from src.economics.generate_inflation import Inflation
 
 
 def main():
@@ -29,11 +30,22 @@ def main():
     r_eq, r_bd, idx_split = economics.generators.generer_rendements_avec_backtest(
         mu_e, sigma_e, mu_b, sigma_b, corr_eb, dates, settings.DATE_PIVOT_BACKTEST, settings.NB_SIMULATIONS
     )
+ 
+    modele_inflation = Inflation(
+        inflation_file, #même que dans la fonction generate_inflation mais où le trouver ?
+        livret_a_file,
+        date_depart=settings.DATE_DEBUT_T0, 
+        date_fin=date_fin_str, 
+        n_sim=settings.NB_SIMULATIONS
+    )
+    
+    # Étape C : On appuie sur le bouton de la machine pour récupérer les données brutes
+    r_inf = modele_inflation.trajectoires_brutes_inflation()
 
     # Injection des chocs (Indépendant de la stratégie)
     if getattr(settings, 'SIMULER_CRISE_MERTON', False):
-        r_eq, r_bd = economics.shocks.ajouter_chocs_merton(
-            r_eq, r_bd, settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS
+        r_eq, r_bd, r_inf = economics.shocks.ajouter_chocs_merton(
+            r_eq, r_bd, r_inf, settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS
         )
 
     if getattr(settings, 'SIMULER_CRISE_LOCALISEE', False):
@@ -42,8 +54,8 @@ def main():
 
         # Vérification stricte unifiée : pas de choc déterministe dans le passé historique
         if date_crise_ts > date_pivot_ts:
-            r_eq, r_bd = economics.shocks.injecter_crise_localisee(
-                r_eq, r_bd, dates, settings.DATE_CRISE, settings.PARAMS_CRISE_DETAIL
+            r_eq, r_bd, r_inf = economics.shocks.injecter_crise_localisee(
+                r_eq, r_bd, r_inf, dates, settings.DATE_CRISE, settings.PARAMS_CRISE_DETAIL
             )
         else:
             print(f"ATTENTION : La date de crise ({settings.DATE_CRISE}) précède ou égale la date pivot ({settings.DATE_PIVOT_BACKTEST}). Le choc a été ignoré.")

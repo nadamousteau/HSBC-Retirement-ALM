@@ -35,3 +35,23 @@ def generer_rendements_actions(mu_e, sigma_e, dates, date_pivot, nb_sims):
         r_eq_fut = np.empty((0, nb_sims))
     r_eq=np.vstack([r_eq_past, r_eq_fut])
     return r_eq, idx_split
+
+#ou
+
+def generer_rendements_actions_correles(mu_e, sigma_e, sigma_b, corr, nb_periodes, nb_sims):
+    """
+    Génère des rendements corrélés selon Black-Scholes.
+    Utilisé pour Target Date (tout stochastique).
+    """
+    r_e_m = mu_e / 12
+    sig_e_m = sigma_e / np.sqrt(12)
+    sig_b_m = sigma_b / np.sqrt(12)
+    
+    cov = np.array([
+        [sig_e_m**2, corr * sig_e_m * sig_b_m],
+        [corr * sig_e_m * sig_b_m, sig_b_m**2]
+    ])
+    chocs = np.random.multivariate_normal([0, 0], cov, size=(nb_periodes, nb_sims))
+    rend_eq = r_e_m - 0.5 * sig_e_m**2 + chocs[:, :, 0]
+    
+    return rend_eq

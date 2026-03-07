@@ -121,6 +121,8 @@ SEVERITE_EQ_MOYENNE = -0.20       # Choc moyen sur les actions (log-rendement)
 SEVERITE_EQ_SIGMA = 0.10          # Volatilité du choc actions
 SEVERITE_BD_MOYENNE = -0.02       # Choc moyen sur les obligations
 SEVERITE_BD_SIGMA = 0.05          # Volatilité du choc obligations
+SEVERITE_INFLATION_MOYENNE = 0.06  # Moyenne inflation
+SEVERITE_INFLATION_SIGMA = 0.03
 
 # 2. Choc Déterministe (Crise Localisée)
 SIMULER_CRISE_LOCALISEE = False
@@ -130,6 +132,8 @@ PARAMS_CRISE_DETAIL = {
     'drop_bd': 0.05,              # Choc instantané obligations (-5%)
     'duree_mois': 12,             # Période de stress (persistance)
     'facteur_vol': 2.5            # Multiplicateur de volatilité post-choc
+    'facteur_vol_inf':2.5         # Multiplicateur de volatilité post-choc inflation
+    'spike_inf': 0.05             # Ajout de 5% à l'inflation de base en cas de pic
 }
 
 # =============================================================================
