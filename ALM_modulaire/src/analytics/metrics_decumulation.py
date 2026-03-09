@@ -4,6 +4,187 @@ import numpy as np
 # MÉTRIQUES DE DÉCUMULATION
 # =============================================================================
 
+def annees_couvertes_par_salaire(
+    capitaux_finaux,
+    derniers_salaires,
+    taux_remplacement=1.0,
+    taux_mensuel=0.0
+):
+    """
+    Calcule, pour chaque simulation, le nombre d'années pendant lesquelles
+    le capital couvre un revenu de remplacement = taux_remplacement * dernier_salaire.
+
+    Si taux_mensuel > 0, le capital résiduel continue de fructifier :
+        capital = rente * (1 - (1+r)^(-n)) / r   =>  n = -ln(1 - capital*r/rente) / ln(1+r)
+
+    Parametres
+    ----------
+    capitaux_finaux    : (N,) capital au début de la retraite
+    derniers_salaires  : (N,) dernier salaire mensuel avant retraite
+    taux_remplacement  : fraction du salaire visée (ex: 0.7 = 70% du salaire, défaut = 100%)
+    taux_mensuel       : rendement mensuel du capital résiduel (0 = capital non investi)
+
+    Returns
+    -------
+    annees : (N,) durée de couverture en années (np.inf si le capital suffit à vie)
+    """
+    rentes_cibles = derniers_salaires * taux_remplacement
+    annees = np.empty(len(capitaux_finaux))
+
+    for i, (cap, rente) in enumerate(zip(capitaux_finaux, rentes_cibles)):
+        if cap <= 0 or rente <= 0:
+            annees[i] = 0.0
+            continue
+
+        if taux_mensuel <= 0:
+            annees[i] = (cap / rente) / 12.0
+        else:
+            ratio = cap * taux_mensuel / rente
+            if ratio >= 1.0:
+                annees[i] = np.inf
+                continue
+            nb_mois = -np.log(1.0 - ratio) / np.log(1.0 + taux_mensuel)
+            annees[i] = nb_mois / 12.0
+
+    return annees
+
+
+def salaire_retraite_pour_horizon(
+    capitaux_finaux,
+    horizon_ans,
+    taux_mensuel=0.0
+):
+    """
+    Calcule, pour chaque simulation, le revenu mensuel constant que le capital
+    permet de verser pendant exactement `horizon_ans` années.
+
+    Formule annuité constante :
+        si r > 0 : rente = capital * r / (1 - (1+r)^(-n))
+        si r = 0 : rente = capital / n
+
+    Parametres
+    ----------
+    capitaux_finaux : (N,) capital au début de la retraite
+    horizon_ans     : durée cible en années (ex: 25 ans si retraite à 65, décès à 90)
+    taux_mensuel    : rendement mensuel du capital résiduel
+
+    Returns
+    -------
+    rentes : (N,) revenu mensuel en €
+    """
+    n_mois = horizon_ans * 12
+
+    if taux_mensuel <= 0:
+        return capitaux_finaux / n_mois
+    else:
+        facteur = taux_mensuel / (1.0 - (1.0 + taux_mensuel) ** (-n_mois))
+        return capitaux_finaux * facteur
+
+
+def probabilite_taux_remplacement(
+    capitaux_finaux,
+    derniers_salaires,
+    horizon_ans,
+    taux_remplacement=1.0,
+    taux_mensuel=0.0
+):
+    """
+    Probabilité (sur N simulations) que le capital permette de couvrir
+    un revenu de remplacement pendant toute la durée `horizon_ans`.
+
+    Autrement dit : P(salaire_retraite_pour_horizon >= taux_remplacement * dernier_salaire)
+
+    Exemple : 0.72 → dans 72 simulations sur 100, l'objectif est atteint.
+
+    Parametres
+    ----------
+    capitaux_finaux   : (N,)
+    derniers_salaires : (N,)
+    horizon_ans       : durée de retraite à couvrir (années)
+    taux_remplacement : fraction du salaire visée (défaut = 1.0, soit 100%)
+    taux_mensuel      : rendement mensuel du capital résiduel
+
+    Returns
+    -------
+    proba : float ∈ [0, 1]
+    """
+    rentes_possibles = salaire_retraite_pour_horizon(capitaux_finaux, horizon_ans, taux_mensuel)
+    rentes_cibles = derniers_salaires * taux_remplacement
+    return float(np.mean(rentes_possibles >= rentes_cibles))
+
+# =============================================================================
+# SYNTHÈSE GLOBALE
+# =============================================================================
+
+def calcul_kpi_complets_decumulation(
+    capitaux_finaux: np.ndarray,
+    derniers_salaires: np.ndarray,
+    horizon_ans: float,
+    taux_remplacement: float = 1.0,
+    taux_mensuel: float = 0.0,
+) -> dict:
+    """
+    Calcule l'ensemble des KPIs de décumulation en un seul appel,
+    en s'appuyant sur les 3 métriques de base.
+
+    Parameters
+    ----------
+    capitaux_finaux   : (N,) capital au début de la retraite
+    derniers_salaires : (N,) dernier salaire mensuel avant retraite
+    horizon_ans       : durée de retraite à couvrir (années, ex: 25)
+    taux_remplacement : fraction du salaire visée (défaut = 1.0, soit 100%)
+    taux_mensuel      : rendement mensuel du capital résiduel
+
+    Returns
+    -------
+    dict de KPIs scalaires (quantiles P5/P50/P95 pour les métriques vectorielles)
+    """
+
+    def _quantiles(arr, name):
+        finite = arr[np.isfinite(arr)]
+        return {
+            f"{name}_p5":  float(np.percentile(finite, 5))  if len(finite) else np.nan,
+            f"{name}_p50": float(np.percentile(finite, 50)) if len(finite) else np.nan,
+            f"{name}_p95": float(np.percentile(finite, 95)) if len(finite) else np.nan,
+        }
+
+    # 1. Nombre d'années couvertes par le capital
+    annees = annees_couvertes_par_salaire(
+        capitaux_finaux, derniers_salaires,
+        taux_remplacement=taux_remplacement,
+        taux_mensuel=taux_mensuel,
+    )
+
+    # 2. Rente mensuelle atteignable sur l'horizon cible
+    rentes = salaire_retraite_pour_horizon(
+        capitaux_finaux,
+        horizon_ans=horizon_ans,
+        taux_mensuel=taux_mensuel,
+    )
+
+    # 3. Probabilité d'atteindre le taux de remplacement sur tout l'horizon
+    proba = probabilite_taux_remplacement(
+        capitaux_finaux, derniers_salaires,
+        horizon_ans=horizon_ans,
+        taux_remplacement=taux_remplacement,
+        taux_mensuel=taux_mensuel,
+    )
+
+    kpis = {
+        # Durabilité : combien d'années le capital tient-il ?
+        **_quantiles(annees, "annees_couvertes"),
+
+        # Niveau de vie : quelle rente mensuelle sur l'horizon ?
+        **_quantiles(rentes, "rente_mensuelle"),
+
+        # Probabilité d'atteindre l'objectif de remplacement
+        "probabilite_taux_remplacement": proba,
+    }
+
+    return kpis
+
+
+'''
 def annees_couvertes_par_rente(capitaux_finaux, rente_mensuelle_cible, taux_mensuel):
     """
     Calcule, pour chaque simulation, le nombre d'années pendant lesquelles
@@ -116,26 +297,6 @@ def rente_viagere_equivalente(
         facteur = taux_mensuel / (1.0 - (1.0 + taux_mensuel) ** (-n_mois))
         return capitaux_finaux * facteur
 
-
-def taux_remplacement_effectif(
-    rentes_mensuelles: np.ndarray,
-    derniers_salaires: np.ndarray
-) -> np.ndarray:
-    """
-    Taux de remplacement effectif = rente mensuelle perçue / dernier salaire mensuel.
-
-    Parameters
-    ----------
-    rentes_mensuelles : (N,) revenu total mensuel en retraite (livret A + capital investi)
-    derniers_salaires : (N,) dernier salaire mensuel avant retraite
-
-    Returns
-    -------
-    taux : (N,) ∈ [0, +∞[
-    """
-    return np.where(derniers_salaires > 0, rentes_mensuelles / derniers_salaires, 0.0)
-
-
 def capital_residuel_au_deces(
     mat_cap_retraite: np.ndarray,
     ages_deces: np.ndarray,
@@ -243,82 +404,4 @@ def ratio_confort(
         capital_necessaire = rente_mensuelle_cible * facteur
 
     return np.where(capital_necessaire > 0, capitaux_finaux / capital_necessaire, np.inf)
-
-
-# =============================================================================
-# SYNTHÈSE GLOBALE
-# =============================================================================
-
-def calcul_kpi_complets_decumulation(
-    mat_cap_retraite: np.ndarray,
-    ages_deces: np.ndarray,
-    age_retraite: int,
-    rente_mensuelle: np.ndarray,
-    derniers_salaires: np.ndarray,
-    taux_mensuel: float = 0.0,
-    esperance_vie: float = 85.0,
-    age_reference_confort: int = 95,
-) -> dict:
-    """
-    Calcule l'ensemble des KPIs de décumulation en un seul appel.
-
-    Parameters
-    ----------
-    mat_cap_retraite       : (T, N) trajectoires du capital en retraite
-    ages_deces             : (N,) âges de décès simulés
-    age_retraite           : âge de départ en retraite
-    rente_mensuelle        : (N,) rente mensuelle consommée par simulation
-    derniers_salaires      : (N,) dernier salaire mensuel avant retraite
-    taux_mensuel           : rendement mensuel du capital encore investi
-    esperance_vie          : âge de référence pour les années de réserve
-    age_reference_confort  : âge cible pour le ratio de confort
-    seuil_ruine            : seuil de capital définissant la ruine
-
-    Returns
-    -------
-    dict de KPIs scalaires (quantiles P5/P50/P95 pour les métriques vectorielles)
-    """
-    capitaux_finaux = mat_cap_retraite[-1, :]
-
-    reserves = annees_reserve(mat_cap_retraite, rente_mensuelle, age_retraite, esperance_vie)
-    ratios = ratio_confort(capitaux_finaux, rente_mensuelle, age_retraite, age_reference_confort, taux_mensuel )
-
-    # -- Niveau de vie --
-    rente_equiv = rente_viagere_equivalente(capitaux_finaux, age_retraite,
-                                            horizon_ans=age_reference_confort - age_retraite,
-                                            taux_mensuel=taux_mensuel)
-    taux_remp = taux_remplacement_effectif(rente_mensuelle, derniers_salaires)
-
-    # -- Héritage --
-    heritage = capital_residuel_au_deces(mat_cap_retraite, ages_deces, age_retraite)
-    prob_heritage = float(np.mean(heritage > 0))
-
-    # -- Déficit --
-    gap_stats = shortfall_gap(mat_cap_retraite, rente_mensuelle, ages_deces, age_retraite)
-
-    def _quantiles(arr, name):
-        finite = arr[np.isfinite(arr)]
-        return {
-            f"{name}_p5":  float(np.percentile(finite, 5))  if len(finite) else np.nan,
-            f"{name}_p50": float(np.percentile(finite, 50)) if len(finite) else np.nan,
-            f"{name}_p95": float(np.percentile(finite, 95)) if len(finite) else np.nan,
-        }
-
-    kpis = {
-        # Durabilité
-        **_quantiles(reserves,    "annees_reserve"),
-        **_quantiles(ratios,      "ratio_confort"),
-
-        # Niveau de vie
-        **_quantiles(rente_equiv, "rente_mensuelle_equiv"),
-        **_quantiles(taux_remp,   "taux_remplacement"),
-
-        # Héritage
-        **_quantiles(heritage,    "capital_residuel"),
-        "probabilite_heritage":   prob_heritage,
-
-        # Déficit (shortfall)
-        **gap_stats,
-    }
-
-    return kpis
+'''

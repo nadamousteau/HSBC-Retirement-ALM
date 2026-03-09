@@ -1,5 +1,105 @@
 import numpy as np
 import pandas as pd
+from src.economics.nelson_siegel_var import simulate_gbi_monte_carlo, get_calibration
+
+def generer_rendements_bond(Bond, dates, date_pivot, nb_sims, maturity, duration, sigma_bd,
+                             gbi_tensor=None, seed=None):
+    """
+    Génère les rendements d'un type d'obligation spécifique.
+    Utilise le modèle Nelson-Siegel + VAR(1) pour les taux ZC (passé et futur).
+
+    Args:
+        Bond        : str   — nom de l'obligation (clé du dictionnaire de spreads)
+        dates       : array-like — dates mensuelles de la simulation
+        date_pivot  : str ou Timestamp — date séparant backtest et forecast
+        nb_sims     : int   — nombre de scénarios Monte Carlo
+        maturity    : float — maturité cible en années (ex : 10.0)
+        duration    : float — duration modifiée de l'obligation
+        sigma_bd    : float — volatilité additionnelle en bps (non utilisée si gbi_tensor fourni)
+        gbi_tensor  : ndarray (nb_sims, nb_months, 360) ou None
+                      Si None, une simulation est lancée en interne (usage autonome).
+        seed        : int ou None — graine aléatoire si gbi_tensor=None
+
+    Returns:
+        r_bd        : ndarray (nb_total_mois, nb_sims) — rendements mensuels
+        idx_split   : int — indice de séparation backtest / forecast
+    """
+    dt = 1.0 / 12.0
+    dates_pd = pd.to_datetime(dates)
+    pivot_ts = pd.Timestamp(date_pivot)
+    nb_total_mois = len(dates_pd)
+
+    # ------------------------------------------------------------------
+    # 1. Spreads par type d'obligation
+    # ------------------------------------------------------------------
+    spreads_dict = {
+        "US Inflation Linked Bond - USD Unhedged": 0.0101,
+        "US High Yield Bond BB-B - USD Unhedged":  0.0079,
+        "USD Corporate Bond - USD Unhedged":        0.0127,
+    }
+    spread = spreads_dict.get(Bond, 0.0)
+
+    # ------------------------------------------------------------------
+    # 2. Indice de séparation backtest / forecast
+    # ------------------------------------------------------------------
+    if pivot_ts < dates_pd[0]:
+        idx_split = 0
+    elif pivot_ts > dates_pd[-1]:
+        idx_split = nb_total_mois
+    else:
+        idx_split = int(np.searchsorted(dates_pd, pivot_ts))
+
+    # ------------------------------------------------------------------
+    # 3. Simulation GBI si tenseur non fourni
+    #    (utile pour appel autonome ou tests unitaires)
+    # ------------------------------------------------------------------
+    if gbi_tensor is None:
+        calibration = get_calibration()
+        gbi_tensor, _, _ = simulate_gbi_monte_carlo(
+            nb_sims=nb_sims,
+            nb_months=nb_total_mois,
+            calibration=calibration,
+            seed=seed,
+        )
+        # gbi_tensor : (nb_sims, nb_total_mois, 360)
+
+    # ------------------------------------------------------------------
+    # 4. Extraction du taux ZC à la maturité cible depuis le tenseur GBI
+    #    Index dans la grille mensuelle (0-indexed) :
+    #      tau_idx = round(maturity * 12) - 1
+    # ------------------------------------------------------------------
+    tau_idx = int(round(maturity * 12)) - 1
+    tau_idx = max(0, min(tau_idx, gbi_tensor.shape[2] - 1))
+
+    # zc_matrix : (nb_total_mois, nb_sims)
+    # gbi_tensor[sim, t, tau] -> on transpose : (T, N)
+    zc_matrix = gbi_tensor[:, :, tau_idx].T      # (nb_total_mois, nb_sims)
+
+    # Yield = ZC + spread (spread constant)
+    y_matrix = zc_matrix + spread                 # (nb_total_mois, nb_sims)
+
+    # ------------------------------------------------------------------
+    # 5. Calcul des rendements : carry - effet taux
+    #    r(t) = y(t-1) * dt - duration * (y(t) - y(t-1))
+    # ------------------------------------------------------------------
+    y_prev = np.vstack([y_matrix[0:1, :], y_matrix[:-1, :]])  # y décalé d'un pas
+    delta_y = y_matrix - y_prev                               # variation de yield
+
+    r_bd = y_prev * dt - duration * delta_y                   # (nb_total_mois, nb_sims)
+
+    # ------------------------------------------------------------------
+    # 6. Cohérence backtest : les scénarios passés sont identiques
+    #    Le tenseur GBI est déterministe sur [0, idx_split) si le seed
+    #    est fixé, mais on peut aussi forcer la colonne unique dupliquée
+    #    pour reproduire le comportement d'origine.
+    # ------------------------------------------------------------------
+    if idx_split > 0:
+        # Moyenne des scénarios sur la partie historique -> signal unique
+        r_hist_mean = r_bd[:idx_split, :].mean(axis=1, keepdims=True)  # (idx_split, 1)
+        r_bd[:idx_split, :] = np.tile(r_hist_mean, (1, nb_sims))
+
+    return r_bd, idx_split
+'''
 from src.economics.yield_curve import YieldCurveBuilder
 
 def generer_rendements_bond(Bond, dates, date_pivot, nb_sims, yc_builder, maturity, duration, sigma_bd):
@@ -89,3 +189,4 @@ def generer_rendements_bond(Bond, dates, date_pivot, nb_sims, yc_builder, maturi
     r_bd= np.vstack([r_bd_past, r_bd_fut])
 
     return r_bd, idx_split
+'''

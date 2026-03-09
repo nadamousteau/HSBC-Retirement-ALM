@@ -132,6 +132,7 @@ def main():
         idx_sorted = np.argsort(capitaux_finaux)
         idx_p50 = idx_sorted[int(settings.NB_SIMULATIONS * 0.50)]
 
+        #Metrics accumulation
         tri_median = analytics.metrics.calculer_tri_annualise(settings.CAPITAL_INITIAL, hist_apport, capitaux_finaux[idx_p50])
         kpis = analytics.metrics.calcul_kpi_complets(capitaux_finaux, total_investi, mat_cap)
 
@@ -154,6 +155,9 @@ def main():
             #"mat_cap_retraite": mat_cap_retraite, 
             "mat_cap": mat_cap
         }
+
+        #Metrics décumulation
+        #kpis_dec=analytics.metrics_decumulation.calcul_kpi_complets_decumulation(mat_cap_retraite, ages_deces,age_retraite, rente_mensuelle,taux_mensuel: float = 0.0, esperance_vie: float = 85.0, age_reference_confort: int = 95) 
 
         # =========================================================================
         # 4.5. REPORTING CONSOLE
