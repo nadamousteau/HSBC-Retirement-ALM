@@ -8,6 +8,7 @@ import pandas as pd
 import os
 import numpy as np
 from config import settings, profiles
+from pathlib import Path
 
 # =============================================================================
 # PARAMÈTRES PAR DÉFAUT
@@ -115,3 +116,80 @@ def load_market_parameters():
     except Exception as e:  
         print(f"Erreur inattendue : {e}")
         return tuple(DEFAULT_MARKET_PARAMS.values())
+    
+
+
+def charger_rendements_historiques(asset_equity, asset_bond, date_pivot):
+    """
+    Charge les rendements historiques depuis le fichier CSV jusqu'à la date pivot.
+    
+    Args:
+        asset_equity: Nom de l'actif equity (ex: "US Equity USD Unhedged")
+        asset_bond: Nom de l'actif bond (ex: "USD Corporate Bond - USD Unhedged")
+        date_pivot: Date pivot pour filtrer les données historiques
+    
+    Returns:
+        tuple: (rendements_equity, rendements_bond, nombre_periodes)
+               Rendements mensuels jusqu'à la date pivot
+    """
+    # Chemin du fichier CSV
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    csv_path = base_dir / "data" / "inputs" / "HistoricalAssetReturn.csv"
+    
+    if not os.path.exists(csv_path):
+        return None, None, 0
+    
+    # Chargement du CSV
+    # Le CSV a 3 lignes de header:
+    #   - ligne 0: Asset Class - Type
+    #   - ligne 1: Asset Class - Name (noms des colonnes)
+    #   - ligne 2: Asset Data - Date
+    # On skippe lignes 0 et 2, utilise ligne 1 comme header, première colonne comme index (dates)
+    df = pd.read_csv(csv_path, skiprows=[0, 2], header=0, index_col=0)
+    
+    # Convertir l'index en datetime
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+    
+    # Conversion de la date pivot
+    pivot_ts = pd.Timestamp(date_pivot)
+    
+    # Filtrage jusqu'à la date pivot
+    df_filtered = df[df.index <= pivot_ts].copy()
+    
+    if df_filtered.empty:
+        return None, None, 0
+    
+    # Extraction des colonnes pour equity et bond
+    try:
+        r_equity = df_filtered[asset_equity].dropna().values
+        r_bond = df_filtered[asset_bond].dropna().values
+        
+        # Prendre la longueur minimale pour avoir les mêmes dates
+        min_len = min(len(r_equity), len(r_bond))
+        return r_equity[-min_len:], r_bond[-min_len:], min_len
+    except KeyError as e:
+        print(f"Colonne non trouvée dans le CSV: {e}")
+        print(f"Colonnes disponibles: {list(df_filtered.columns)}")
+        return None, None, 0
+
+def generer_rendements_correles_base(mu_e, sigma_e, mu_b, sigma_b, corr, nb_periodes, nb_sims):
+    """
+    Génère des rendements corrélés selon Black-Scholes.
+    Utilisé pour Target Date (tout stochastique).
+    """
+    r_e_m = mu_e / 12
+    r_b_m = mu_b / 12
+    sig_e_m = sigma_e / np.sqrt(12)
+    sig_b_m = sigma_b / np.sqrt(12)
+    
+    cov = np.array([
+        [sig_e_m**2, corr * sig_e_m * sig_b_m],
+        [corr * sig_e_m * sig_b_m, sig_b_m**2]
+    ])
+    
+    chocs = np.random.multivariate_normal([0, 0], cov, size=(nb_periodes, nb_sims))
+    rend_eq = r_e_m - 0.5 * sig_e_m**2 + chocs[:, :, 0]
+    rend_bd = r_b_m - 0.5 * sig_b_m**2 + chocs[:, :, 1]
+    
+    return rend_eq, rend_bd

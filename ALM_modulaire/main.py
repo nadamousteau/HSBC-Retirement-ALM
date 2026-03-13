@@ -26,8 +26,9 @@ def main():
     dates = pd.date_range(start=settings.DATE_DEBUT_T0, periods=settings.NB_PERIODES_TOTAL, freq='ME')
 
     #Génération unifiée : Historique avant la date pivot, Stochastique après pour TOUTES les stratégies
-    r_eq, r_bd, idx_split = economics.generators.generer_rendements_avec_backtest(
-        mu_e, sigma_e, mu_b, sigma_b, corr_eb, dates, settings.DATE_PIVOT_BACKTEST, settings.NB_SIMULATIONS
+    r_eq, r_bd, idx_split = economics.generators.generer_rendements_avec_backetest(
+        mu_e, sigma_e, mu_b, sigma_b, corr_eb, dates, settings.DATE_PIVOT_BACKTEST, settings.NB_SIMULATIONS,
+        asset_equity=profiles.Equity, asset_bond=profiles.Bond
     )
     
     # Injection des chocs (Indépendant de la stratégie)
