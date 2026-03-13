@@ -12,7 +12,6 @@ from src.analytics import plotting
 from src.economics.yield_curve import YieldCurveBuilder
 from src.liabilities.goal_price_index import GoalPriceIndex
 from src.economics.nelson_siegel_var import simulate_gbi_monte_carlo
-from src.economics.generate_inflation import Inflation
 
 
 def main():
@@ -31,26 +30,10 @@ def main():
         mu_e, sigma_e, mu_b, sigma_b, corr_eb, dates, settings.DATE_PIVOT_BACKTEST, settings.NB_SIMULATIONS
     )
     
-    # TEMPORAIRE : Désactivation de l'inflation - TODO: ajouter les fichiers CSV
-
-    #modele_inflation = Inflation(
-    #    inflation_file, #même que dans la fonction generate_inflation mais où le trouver ?
-    #    livret_a_file,
-     #   date_depart=settings.DATE_DEBUT_T0, 
-    #    date_fin=date_fin_str, 
-    #    n_sim=settings.NB_SIMULATIONS
-    #)
-    
-    # Étape C : On appuie sur le bouton de la machine pour récupérer les données brutes
-    #r_inf = modele_inflation.trajectoires_brutes_inflation()
-
-    # TEMPORAIRE Génération simple d'inflation (backup)
-    r_inf = np.random.normal(0.02/12, 0.005, (settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS))
-
     # Injection des chocs (Indépendant de la stratégie)
     if getattr(settings, 'SIMULER_CRISE_MERTON', False):
-        r_eq, r_bd, r_inf = economics.shocks.ajouter_chocs_merton(
-            r_eq, r_bd, r_inf, settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS
+        r_eq, r_bd = economics.shocks.ajouter_chocs_merton(
+            r_eq, r_bd, settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS
         )
 
     if getattr(settings, 'SIMULER_CRISE_LOCALISEE', False):
@@ -59,8 +42,8 @@ def main():
 
         # Vérification stricte unifiée : pas de choc déterministe dans le passé historique
         if date_crise_ts > date_pivot_ts:
-            r_eq, r_bd, r_inf = economics.shocks.injecter_crise_localisee(
-                r_eq, r_bd, r_inf, dates, settings.DATE_CRISE, settings.PARAMS_CRISE_DETAIL
+            r_eq, r_bd = economics.shocks.injecter_crise_localisee(
+                r_eq, r_bd, dates, settings.DATE_CRISE, settings.PARAMS_CRISE_DETAIL
             )
         else:
             print(f"ATTENTION : La date de crise ({settings.DATE_CRISE}) précède ou égale la date pivot ({settings.DATE_PIVOT_BACKTEST}). Le choc a été ignoré.")
@@ -79,8 +62,7 @@ def main():
         yc = YieldCurveBuilder().load_from_csv(settings.CSV_YIELD_CURVE)
         gpi = GoalPriceIndex(
             yield_curve=yc,
-            retirement_date=settings.DATE_RETRAITE_GBI,
-            dec_years=settings.DUREE_DECUMULATION_GBI
+            retirement_date=settings.DATE_RETRAITE_GBI
         )
 
         # Nelson-Siegel + VAR(1) pour le forecast uniquement
@@ -145,24 +127,13 @@ def main():
         capital_p5_reel = kpis['var_95'] * coeff_inflation
         gain_p5_reel = capital_p5_reel - total_investi
 
-        dernier_salaire = hist_salaire[-1]
-        """
-        taux_remp, mat_cap_retraite = liabilities.decumulation.simuler_decumulation(
-            capitaux_finaux, dernier_salaire, settings.TAUX_LIVRET_A, settings.DUREE_RETRAITE
-        )"""
-
         # Sauvegarde des résultats
         resultats_comparaison[strat_actuelle] = mat_cap
         dernier_contexte = {
             "courbe_investi": courbe_investi, "hist_apport": hist_apport,
             "hist_salaire": hist_salaire, 
-            # "taux_remp": taux_remp,
-            #"mat_cap_retraite": mat_cap_retraite, 
             "mat_cap": mat_cap
         }
-
-        #Metrics décumulation
-        #kpis_dec=analytics.metrics_decumulation.calcul_kpi_complets_decumulation(mat_cap_retraite, ages_deces,age_retraite, rente_mensuelle,taux_mensuel: float = 0.0, esperance_vie: float = 85.0, age_reference_confort: int = 95) 
 
         # =========================================================================
         # 4.5. REPORTING CONSOLE
@@ -199,8 +170,6 @@ def main():
     hist_salaire = dernier_contexte["hist_salaire"]
     hist_apport = dernier_contexte["hist_apport"]
     mat_cap = dernier_contexte["mat_cap"]
-    #taux_remp = dernier_contexte["taux_remp"]
-    #mat_cap_retraite = dernier_contexte["mat_cap_retraite"]
 
     # Graphiques d'accumulation (Comparatifs ou Isolés)
     if mode_comparaison:
@@ -232,17 +201,6 @@ def main():
             plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=False)
         if getattr(settings, 'PLOT_CRISE_CAPITAL_REEL', False):
             plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=True)
-    """
-    if getattr(settings, 'PLOT_RETRAITE_CAPITAL', False):
-        #plotting.plot_retraite_capital(mat_cap_retraite, reel=False)
-    if getattr(settings, 'PLOT_RETRAITE_CAPITAL_REEL', False):
-        #plotting.plot_retraite_capital(mat_cap_retraite, reel=True)
-
-    if getattr(settings, 'PLOT_TAUX_REMPLACEMENT', False):
-        #plotting.plot_taux_remplacement(taux_remp, reel=False)
-    if getattr(settings, 'PLOT_TAUX_REMPLACEMENT_REEL', False):
-        #plotting.plot_taux_remplacement(taux_remp, reel=True)
-    """
 
     # =========================================================================
     # 6. SYNTHÈSE DES CAPITAUX À LA RETRAITE (Console)

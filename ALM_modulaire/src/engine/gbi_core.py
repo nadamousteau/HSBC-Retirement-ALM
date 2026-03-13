@@ -58,7 +58,6 @@ def _compute_beta_matrix(gpi, dates, idx_split, nb_sims, gbi_tensor):
     nb_forecast = nb_periods - max(idx_split, 1)
     if nb_forecast > 0 and gbi_tensor is not None:
         ret_date = pd.Timestamp(settings.DATE_RETRAITE_GBI)
-        dec_years = settings.DUREE_DECUMULATION_GBI
 
         forecast_dates = dates[max(idx_split, 1):]
         retirement_offset_months = np.array([
@@ -68,7 +67,7 @@ def _compute_beta_matrix(gpi, dates, idx_split, nb_sims, gbi_tensor):
 
         # compute_beta_from_ns attend (N, T_forecast, 360) et retourne (T_forecast, N)
         beta_forecast = compute_beta_from_ns(
-            gbi_tensor, retirement_offset_months, dec_years
+            gbi_tensor, retirement_offset_months
         )
         beta_matrix[max(idx_split, 1):, :] = beta_forecast
 

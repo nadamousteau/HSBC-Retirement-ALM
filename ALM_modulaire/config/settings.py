@@ -42,24 +42,17 @@ TAUX_APPORT_BASE = 0.10
 # 5. PARAMÈTRES ÉCONOMIQUES
 # =============================================================================
 TAUX_INFLATION = 0.02
-TAUX_LIVRET_A = 0.02
 
 # =============================================================================
-# 6. PARAMÈTRES RETRAITE
-# =============================================================================
-DUREE_RETRAITE = 20
-
-# =============================================================================
-# 7. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
+# 6. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
 # =============================================================================
 
 DATE_RETRAITE_GBI = "2041-12-31"  # DATE_DEBUT_T0 + NB_ANNEES_ACCUMULATION
 FLOOR_PERCENT_GBI = 0.80  # Plancher de sécurité (80% de la richesse cible)
-DUREE_DECUMULATION_GBI = 20  # Durée de décumulation pour le calcul du GPI
 GBI_SEED = 42  # Graine aléatoire pour NS-VAR(1)
 
 # =============================================================================
-# 8. PARAMÈTRES SIMULATION
+# 11. PARAMÈTRES SIMULATION
 # =============================================================================
 
 NB_SIMULATIONS = 1000
@@ -67,7 +60,7 @@ NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 
 # =============================================================================
-# 9. PARAMÈTRES APPORT (Contributions dynamiques)
+# 12. PARAMÈTRES APPORT (Contributions dynamiques)
 # =============================================================================
 
 VITESSE_PROGRESSION = 0.10
@@ -76,7 +69,7 @@ SEUIL_MATURITE = 0.935
 SALAIRE_MAX_CIBLE = SALAIRE_INITIAL * 2.5
 
 # =============================================================================
-# 10. PARAMÈTRES DES CRISES (ESG)
+# 13. PARAMÈTRES DES CRISES (ESG)
 # =============================================================================
 
 # Modèle de Jump-Diffusion (Merton)
@@ -86,8 +79,6 @@ SEVERITE_EQ_MOYENNE = -0.20
 SEVERITE_EQ_SIGMA = 0.10
 SEVERITE_BD_MOYENNE = -0.02
 SEVERITE_BD_SIGMA = 0.05
-SEVERITE_INFLATION_MOYENNE = 0.06
-SEVERITE_INFLATION_SIGMA = 0.03
 
 # Choc Déterministe (Crise Localisée)
 SIMULER_CRISE_LOCALISEE = False
@@ -96,27 +87,27 @@ PARAMS_CRISE_DETAIL = {
     'drop_eq': 0.35,
     'drop_bd': 0.05,
     'duree_mois': 12,
-    'facteur_vol': 2.5,              
-    'facteur_vol_inf': 2.5,          
-    'spike_inf': 0.05
+    'facteur_vol': 2.5
 }
 
 # =============================================================================
-# 11. PARAMÈTRES FALEH (Optimisation Stochastique)
+# 14. PARAMÈTRES FALEH (Optimisation Stochastique)
 # =============================================================================
 
 FALEH_NB_TREE_STAGES = 10
 FALEH_PENALTY_RUINE = 50
 FALEH_TARGET_WEALTH = None  # Calculé automatiquement si None
+FALEH_SEED = 42  # Graine aléatoire pour les scénarios FALEH
+FALEH_MAX_BRANCHES = 5  # Nombre maximal de branches par nœud dans l'arbre
 
 # =============================================================================
-# 12. PARAMÈTRES DRAWDOWN
+# 15. PARAMÈTRES DRAWDOWN
 # =============================================================================
 
 DRAWDOWN_AVANT_APPORT = True
 
 # =============================================================================
-# 13. PROFILS D'INVESTISSEMENT
+# 16. PROFILS D'INVESTISSEMENT
 # =============================================================================
 PROFILS = {
     "PRUDENT": {
@@ -167,7 +158,7 @@ PROFILS = {
 }
 
 # =============================================================================
-# 14. VISUALISATION
+# 17. VISUALISATION
 # =============================================================================
 
 # Accumulation
@@ -182,12 +173,6 @@ PLOT_APPORTS_REEL = False
 PLOT_CRISE_RENDEMENTS = False
 PLOT_CRISE_CAPITAL_NOMINAL = False
 PLOT_CRISE_CAPITAL_REEL = False
-
-# Décumulation
-PLOT_RETRAITE_CAPITAL = False
-PLOT_TAUX_REMPLACEMENT = False
-PLOT_RETRAITE_CAPITAL_REEL = False
-PLOT_TAUX_REMPLACEMENT_REEL = False
 
 # KPI
 PRINT_PERFORMANCE_GLOBALE = True
