@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from data.loader import charger_rendements_historiques
+from src.economics.inflation_vasicek import VasicekInflation
 
 def generer_rendements_correles_base(mu_e, sigma_e, mu_b, sigma_b, corr, nb_periodes, nb_sims):
     """
@@ -114,3 +115,55 @@ def generer_rendements_avec_backetest(mu_e, sigma_e, mu_b, sigma_b, corr, dates,
         r_bd_fut = np.empty((0, nb_sims))
     
     return np.vstack([r_eq_past, r_eq_fut]), np.vstack([r_bd_past, r_bd_fut]), idx_split
+
+
+def generer_inflation_vasicek(nb_periodes, nb_sims, kappa=None, theta=None, sigma=None, seed=None):
+    """
+    Génère des trajectoires d'inflation stochastique via le modèle Vasicek.
+    
+    IMPORTANT : Le modèle Vasicek génère des taux périodiques. Les paramètres par défaut
+    sont calibrés en **fréquence annuelle**, mais sont automatiquement convertis en
+    fréquence mensuelle pour la simulation.
+    
+    Formule utilisée pour conversion annuel → mensuel:
+    - kappa_monthly = kappa_annual (la vitesse de retour ne change pas)
+    - theta_monthly = theta_annual / 12
+    - sigma_monthly = sigma_annual / sqrt(12)
+    
+    Args:
+        nb_periodes : Nombre de périodes (mois)
+        nb_sims : Nombre de simulations
+        kappa : Vitesse de retour à la moyenne ANNUELLE (si None, calibration par défaut)
+        theta : Inflation cible long terme ANNUELLE (si None, calibration par défaut)
+        sigma : Volatilité ANNUALISÉE (si None, calibration par défaut)
+        seed : Graine aléatoire pour reproductibilité
+    
+    Returns:
+        np.array : (nb_periodes, nb_sims) - taux d'inflation mensuels
+    """
+    # Calibration par défaut si nécessaire (PARAMÈTRES ANNUELS)
+    if kappa is None or theta is None or sigma is None:
+        calib = VasicekInflation.calibration_default()
+        kappa = kappa if kappa is not None else calib['kappa']
+        theta = theta if theta is not None else calib['theta']
+        sigma = sigma if sigma is not None else calib['sigma']
+    
+    # Convertir les paramètres annuels en mensuels
+    kappa_m, theta_m, sigma_m = VasicekInflation.annualize_to_monthly(kappa, theta, sigma)
+    
+    # Créer l'instance Vasicek avec paramètres mensuels
+    vasicek = VasicekInflation(
+        kappa=kappa_m,
+        theta=theta_m,
+        sigma=sigma_m,
+        inflation_init=theta_m  # Condition initiale en fréquence mensuelle
+    )
+    
+    # Simuler avec fréquence=monthly pour éviter une double conversion
+    return vasicek.simulate(
+        nb_periods=nb_periodes,
+        nb_scenarios=nb_sims,
+        dt=1/12,
+        seed=seed,
+        frequency="monthly"  # Les paramètres sont déjà en fréquence mensuelle
+    )

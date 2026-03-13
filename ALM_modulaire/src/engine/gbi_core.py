@@ -75,7 +75,7 @@ def _compute_beta_matrix(gpi, dates, idx_split, nb_sims, gbi_tensor):
     return beta_matrix
 
 
-def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split):
+def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=None):
     """
     Exécute la simulation Monte Carlo GBI (CPPI avec plancher lié au GPI).
 
@@ -90,6 +90,8 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split):
         r_bd       : ndarray (nb_periods, nb_sims) — rendements obligations
         dates      : DatetimeIndex de longueur nb_periods
         idx_split  : indice de séparation backtest/forecast
+        inflation  : ndarray (nb_periods, nb_sims) — inflation stochastique, optionnel
+                    Si None, utilise TAUX_INFLATION constant
 
     Returns:
         mat_capital   : ndarray (nb_periods+1, nb_sims)
@@ -98,8 +100,13 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split):
         hist_drawdown : ndarray (nb_periods, nb_sims)
         hist_salaire  : ndarray (nb_periods,)
         hist_alloc_psp: ndarray (nb_periods, nb_sims) — allocation PSP par sim
+        inflation_factor : ndarray (nb_periods+1, nb_sims) — facteur cumulatif d'inflation
     """
     nb_periods, nb_sims = r_eq.shape
+    
+    # Générer inflation si non fournie
+    if inflation is None:
+        inflation = np.ones((nb_periods, nb_sims)) * settings.TAUX_INFLATION
 
     floor_pct    = settings.FLOOR_PERCENT_GBI
     age_depart   = settings.AGE_DEPART
@@ -124,6 +131,9 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split):
     hist_apport   = np.zeros(nb_periods)
     hist_drawdown = np.zeros((nb_periods, nb_sims))
     hist_salaire  = np.zeros(nb_periods)
+    
+    # Facteur cumulatif d'indexation
+    inflation_factor = np.ones((nb_periods + 1, nb_sims))
 
     capital_max = np.full(nb_sims, capital_init)
 
@@ -138,19 +148,29 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split):
         age      = age_depart + t_annees
 
         W = mat_capital[k].copy()  # (nb_sims,)
+        
+        # Facteur d'indexation cumulatif
+        inflation_factor[k+1, :] = inflation_factor[k, :] * (1 + inflation[k, :])
 
-        # ── 1. Contribution mensuelle — identique à core.py ─────────────
-        apport_mensuel = contributions.calculer_apport_exponentiel(
+        # ── 1. Contribution mensuelle — indexée à l'inflation stochastique (par scénario) ─
+        apport_mensuel_base = contributions.calculer_apport_exponentiel(
             t_annees, app_init, app_max, t_pic
         ) if k > 0 else 0.0
 
-        salaire = contributions.estimer_salaire_saturation(
+        salaire_base = contributions.estimer_salaire_saturation(
             t_annees, settings.SALAIRE_INITIAL, settings.SALAIRE_MAX_CIBLE
         )
+        
+        # Appliquer l'indexation : multiplier par le taux MENSUEL uniquement, pas le cumul
+        apport_mensuel_indexed = apport_mensuel_base * (1 + inflation[k, :])  # (nb_sims,)
+        apport_mensuel = np.mean(apport_mensuel_indexed)  # Moyenne pour l'historique (reporting)
+        
+        # Salaire en moyenne 
+        salaire_moyenne = salaire_base * np.mean(1 + inflation[k, :])
 
-        W += apport_mensuel
+        W += apport_mensuel_indexed  # Ajouter l'apport VECTORISÉ
         hist_apport[k]      = apport_mensuel
-        hist_salaire[k]     = salaire
+        hist_salaire[k]     = salaire_moyenne
         courbe_investi[k+1] = courbe_investi[k] + apport_mensuel
 
         # ── 2. Réinitialisation annuelle du plancher (chaque janvier) ───
@@ -189,4 +209,4 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split):
         dd               = np.where(capital_max > 1e-9, (W - capital_max) / capital_max, 0.0)
         hist_drawdown[k] = dd
 
-    return mat_capital, courbe_investi, hist_apport, hist_drawdown, hist_salaire, hist_alloc_psp
+    return mat_capital, courbe_investi, hist_apport, hist_drawdown, hist_salaire, hist_alloc_psp, inflation_factor

@@ -69,7 +69,7 @@ class FalehStrategy(BaseStrategy):
         )
         
         # Arbre de scénarios
-        self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=3)
+        self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=settings.FALEH_MAX_BRANCHES)
         self.tree = None
         self.nb_tree_stages = nb_tree_stages
         
@@ -104,7 +104,7 @@ class FalehStrategy(BaseStrategy):
         # Génération des scénarios
         t0 = time.time()
         r_eq, r_bd = self.gse.generate_scenarios_simple(
-            nb_periods, nb_scenarios, seed=42
+            nb_periods, nb_scenarios, seed=settings.FALEH_SEED
         )
         t1 = time.time()
         print(f"   • Scénarios générés en {t1-t0:.2f} secondes")
@@ -279,7 +279,7 @@ class FalehStrategy(BaseStrategy):
                 options={'maxiter': 50}
             )
             optimal_w = result.x[0]
-        except:
+        except (ValueError, RuntimeError):
             optimal_w = x0
         
         return optimal_w
@@ -333,58 +333,3 @@ class FalehStrategy(BaseStrategy):
             'tree_stages': self.nb_tree_stages,
             'rebalancing': 'Dynamic (at tree stages)'
         }
-
-
-# =============================================================================
-# CLASSE SIMPLIFIED FALEH STRATEGY (OPTIONNELLE)
-# =============================================================================
-
-class SimplifiedFalehStrategy(BaseStrategy):
-    """
-    Version simplifiée de Faleh sans arbre complet.
-    
-    Utilise une règle d'allocation myope optimale à chaque période,
-    basée sur l'utilité espérée one-step-ahead.
-    
-    Plus rapide computationnellement, utile pour tests.
-    """
-    
-    def __init__(self, mu_e, sigma_e, mu_b, sigma_b, corr_eb):
-        self.gamma = FalehStrategy.GAMMA_MAPPING.get(settings.PROFIL_CHOISI, 4.0)
-        self.mu_e = mu_e
-        self.sigma_e = sigma_e
-        self.mu_b = mu_b
-        self.sigma_b = sigma_b
-        self.corr_eb = corr_eb
-        
-        self._cached_allocation = None
-    
-    def get_allocation(self, t_index, current_age):
-        """Allocation myope optimale."""
-        if self._cached_allocation is None:
-            self._cached_allocation = self._compute_myopic_optimal()
-        
-        return self._cached_allocation, 1 - self._cached_allocation
-    
-    def should_rebalance(self, t_index):
-        """Rééquilibre tous les trimestres."""
-        return (t_index % 3) == 0
-    
-    def _compute_myopic_optimal(self):
-        """
-        Calcul de l'allocation myope optimale (Merton).
-        
-        Solution fermée pour le problème one-period :
-        w* = (μ_e - μ_b) / (γ * σ_e²)
-        """
-        dt = 1.0 / 12.0
-        excess_return = (self.mu_e - self.mu_b) * dt
-        variance = (self.sigma_e * np.sqrt(dt))**2
-        
-        # Allocation de Merton
-        w_merton = excess_return / (self.gamma * variance)
-        
-        # Borner entre 5% et 95%
-        w_optimal = max(0.05, min(0.95, w_merton))
-        
-        return w_optimal

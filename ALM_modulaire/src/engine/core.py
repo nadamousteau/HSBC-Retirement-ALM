@@ -2,9 +2,26 @@ import numpy as np
 from config import settings
 from src.liabilities import contributions
 
-def run_simulation(strategy, r_eq, r_bd, dates):
-    """Exécute la simulation Monte Carlo unifiée (Moteur unique)."""
+def run_simulation(strategy, r_eq, r_bd, dates, inflation=None):
+    """
+    Exécute la simulation Monte Carlo unifiée (Moteur unique).
+    
+    Args:
+        strategy : Objet stratégie d'allocation
+        r_eq : Rendements actions (nb_steps, nb_sims)
+        r_bd : Rendements obligations (nb_steps, nb_sims)
+        dates : Liste des dates
+        inflation : Inflation stochastique (nb_steps, nb_sims), optionnel
+                   Si None, utilise TAUX_INFLATION constant
+    
+    Returns:
+        tuple : (mat_capital, courbe_investi, hist_apport, hist_drawdown, hist_salaire, inflation)
+    """
     nb_steps, nb_sims = r_eq.shape
+    
+    # Générer inflation si non fournie
+    if inflation is None:
+        inflation = np.ones((nb_steps, nb_sims)) * settings.TAUX_INFLATION
     
     mat_capital = np.zeros((nb_steps + 1, nb_sims))
     mat_capital[0, :] = settings.CAPITAL_INITIAL
@@ -30,6 +47,9 @@ def run_simulation(strategy, r_eq, r_bd, dates):
         settings.SALAIRE_INITIAL, settings.SALAIRE_MAX_CIBLE, settings.NB_ANNEES_ACCUMULATION
     )
     fm_params = {'app_init': app_init, 'app_max': app_max, 't_pic': t_pic}
+    
+    # Facteur cumulatif d'indexation (inflation stochastique)
+    inflation_factor = np.ones((nb_steps + 1, nb_sims))
 
     # =========================================================================
     # BOUCLE TEMPORELLE
@@ -43,21 +63,31 @@ def run_simulation(strategy, r_eq, r_bd, dates):
         
         capital_avant = eq_shares * eq_price + bd_shares * bd_price
         
-        apport_mensuel = contributions.calculer_apport_exponentiel(
+        # Calcul du facteur d'indexation cumulatif
+        inflation_factor[k+1, :] = inflation_factor[k, :] * (1 + inflation[k, :])
+        
+        # Apports et salaires indexés à l'inflation stochastique
+        apport_base = contributions.calculer_apport_exponentiel(
             t_annees, fm_params['app_init'], fm_params['app_max'], fm_params['t_pic']
         )
-        salaire = contributions.estimer_salaire_saturation(
+        salaire_base = contributions.estimer_salaire_saturation(
             t_annees, settings.SALAIRE_INITIAL, settings.SALAIRE_MAX_CIBLE
         )
         
-        hist_salaire[k] = salaire
-        hist_apport[k] = apport_mensuel
-        courbe_investi[k+1] = courbe_investi[k] + apport_mensuel
+        # Indexation : Multiplier par le taux MENSUEL uniquement, pas le cumul
+        apport_mensuel_indexed = apport_base * (1 + inflation[k, :])
+        courbe_investi[k+1] = courbe_investi[k] + np.mean(apport_mensuel_indexed)
+        
+        # Versions moyennes pour l'historique (reporting)
+        indexation_moyenne = np.mean(1 + inflation[k, :])
+        hist_salaire[k] = salaire_base * indexation_moyenne
+        hist_apport[k] = apport_base * indexation_moyenne
         
         pct_eq_target, pct_bd_target = strategy.get_allocation(k, age_actuel)
         
-        eq_buy = apport_mensuel * pct_eq_target
-        bd_buy = apport_mensuel * pct_bd_target
+        # Achat d'actifs (distribution à tous les scénarios)
+        eq_buy = apport_mensuel_indexed * pct_eq_target
+        bd_buy = apport_mensuel_indexed * pct_bd_target
         
         eq_shares += eq_buy / eq_price
         bd_shares += bd_buy / bd_price
@@ -94,4 +124,4 @@ def run_simulation(strategy, r_eq, r_bd, dates):
         dd = np.where(capital_max > 1e-9, dd, 0.0)
         hist_drawdown[k, :] = dd
 
-    return mat_capital, courbe_investi, hist_apport, hist_drawdown, hist_salaire
+    return mat_capital, courbe_investi, hist_apport, hist_drawdown, hist_salaire, inflation_factor

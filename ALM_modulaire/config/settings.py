@@ -41,7 +41,16 @@ TAUX_APPORT_BASE = 0.10
 # =============================================================================
 # 5. PARAMÈTRES ÉCONOMIQUES
 # =============================================================================
-TAUX_INFLATION = 0.02
+TAUX_INFLATION = 0.02  # Utilisé uniquement si INFLATION_STOCHASTIQUE = False
+
+# =============================================================================
+# 5b. PARAMÈTRES INFLATION VASICEK (Stochastique)
+# =============================================================================
+INFLATION_STOCHASTIQUE = True  # Activer le modèle Vasicek pour l'inflation
+INFLATION_KAPPA = 0.15         # Vitesse de retour à la moyenne (demi-vie ~4.6 ans)
+INFLATION_THETA = 0.023        # Cible d'inflation long terme (2.3%)
+INFLATION_SIGMA = 0.011        # Volatilité de l'inflation (~1.1% annualisée)
+INFLATION_SEED = 42            # Graine aléatoire pour reproductibilité
 
 # =============================================================================
 # 6. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)

@@ -12,6 +12,7 @@ from src.analytics import plotting
 from src.economics.yield_curve import YieldCurveBuilder
 from src.liabilities.goal_price_index import GoalPriceIndex
 from src.economics.nelson_siegel_var import simulate_gbi_monte_carlo
+from src.economics.generators import generer_inflation_vasicek
 
 
 def main():
@@ -30,6 +31,25 @@ def main():
         mu_e, sigma_e, mu_b, sigma_b, corr_eb, dates, settings.DATE_PIVOT_BACKTEST, settings.NB_SIMULATIONS,
         asset_equity=profiles.Equity, asset_bond=profiles.Bond
     )
+    
+    # =========================================================================
+    # 2a. GÉNÉRATION DE L'INFLATION VASICEK (Stochastique)
+    # =========================================================================
+    if getattr(settings, 'INFLATION_STOCHASTIQUE', False):
+        inflation_tensor = generer_inflation_vasicek(
+            nb_periodes=settings.NB_PERIODES_TOTAL,
+            nb_sims=settings.NB_SIMULATIONS,
+            kappa=getattr(settings, 'INFLATION_KAPPA', 0.15),
+            theta=getattr(settings, 'INFLATION_THETA', 0.023),
+            sigma=getattr(settings, 'INFLATION_SIGMA', 0.011),
+            seed=getattr(settings, 'INFLATION_SEED', 42)
+        )
+        print(f"Inflation Vasicek générée : shape={inflation_tensor.shape}, "
+              f"μ={np.mean(inflation_tensor)*100:.2f}%, σ={np.std(inflation_tensor)*100:.2f}%")
+    else:
+        # Inflation constante (fallback)
+        inflation_tensor = np.ones((settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS)) * settings.TAUX_INFLATION
+        print(f" Inflation constante : {settings.TAUX_INFLATION*100:.2f}%")
     
     # Injection des chocs (Indépendant de la stratégie)
     if getattr(settings, 'SIMULER_CRISE_MERTON', False):
@@ -93,8 +113,8 @@ def main():
 
         # ── Dispatch vers le bon moteur ──────────────────────────────────────
         if strat_actuelle == "GBI":
-            mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _ = engine.run_simulation_gbi(
-                gpi, gbi_tensor, r_eq, r_bd, dates, idx_split
+            mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _, inflation_factor = engine.run_simulation_gbi(
+                gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=inflation_tensor
             )
         else: 
             if strat_actuelle == "TARGET_DATE":
@@ -107,8 +127,8 @@ def main():
                 strategy.initialize_tree(dates)
 
         # Exécution du moteur
-            mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire = engine.run_simulation(
-                strategy, r_eq, r_bd, dates
+            mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, inflation_factor = engine.run_simulation(
+                strategy, r_eq, r_bd, dates, inflation=inflation_tensor
             )
 
         # =========================================================================
@@ -124,8 +144,9 @@ def main():
         tri_median = analytics.metrics.calculer_tri_annualise(settings.CAPITAL_INITIAL, hist_apport, capitaux_finaux[idx_p50])
         kpis = analytics.metrics.calcul_kpi_complets(capitaux_finaux, total_investi, mat_cap)
 
-        coeff_inflation = 1 / ((1 + settings.TAUX_INFLATION) ** settings.NB_ANNEES_ACCUMULATION)
-        capital_p5_reel = kpis['var_95'] * coeff_inflation
+        # Calcul du capital réel en P5 (prenant en compte l'inflation stochastique)
+        idx_p5 = idx_sorted[int(settings.NB_SIMULATIONS * 0.05)]
+        capital_p5_reel = capitaux_finaux[idx_p5] / inflation_factor[-1, idx_p5]
         gain_p5_reel = capital_p5_reel - total_investi
 
         # Sauvegarde des résultats
