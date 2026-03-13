@@ -1,39 +1,31 @@
-import os
 from pathlib import Path
 
 # =============================================================================
 # 0. STRATÉGIE GLOBALE ET BENCHMARKING
 # =============================================================================
-MODE_COMPARAISON = True                     # Si True, exécute et compare les stratégies listées
-STRATEGIES_A_COMPARER = ["GBI", "FALEH" ,"FIXED_MIXED" , "TARGET_DATE"]  # Liste des stratégies à comparer (doit être subset de PROFILS.keys() + "FALEH")
-METHODE_DEFAUT = "GBI"              # Utilisée si MODE_COMPARAISON = False
-
+MODE_COMPARAISON = True
+STRATEGIES_A_COMPARER = ["GBI", "FALEH", "FIXED_MIX", "TARGET_DATE"]  
+METHODE_DEFAUT = "GBI"
 
 # =============================================================================
 # 1. PATHS & DATA CONFIGURATION
 # =============================================================================
-
-# Définition de la racine du projet
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 INPUTS_DIR = DATA_DIR / "inputs"
 
-# Fichiers de données
 XLSX_ASSUMPTIONS = INPUTS_DIR / "AssumptionForSimulation.xlsx"
-CSV_HISTORICAL_RETURNS = INPUTS_DIR / "HistoricalAssetReturn.csv"
+CSV_HISTORICAL_RETURNS = INPUTS_DIR / "HistoricalAssetReturn.csv"  
 CSV_YIELD_CURVE = INPUTS_DIR / "yield-curve-rates-1990-2024.csv"
 
 # =============================================================================
-# 2. MÉTHODE ET PROFIL
+# 2. PROFIL
 # =============================================================================
-
-
 PROFIL_CHOISI = "EQUILIBRE"  # PRUDENT, MODERE, EQUILIBRE, DYNAMIQUE, AGRESSIF
 
 # =============================================================================
 # 3. PARAMÈTRES TEMPORELS
 # =============================================================================
-
 NB_ANNEES_ACCUMULATION = 40
 AGE_DEPART = 20
 DATE_DEBUT_T0 = "2001-12-31"
@@ -42,7 +34,6 @@ DATE_PIVOT_BACKTEST = "2025-08-31"
 # =============================================================================
 # 4. PARAMÈTRES FINANCIERS
 # =============================================================================
-
 CAPITAL_INITIAL = 5000
 SALAIRE_INITIAL = 2000
 TAUX_APPORT_BASE = 0.10
@@ -50,120 +41,91 @@ TAUX_APPORT_BASE = 0.10
 # =============================================================================
 # 5. PARAMÈTRES ÉCONOMIQUES
 # =============================================================================
-
 TAUX_INFLATION = 0.02
-TAUX_LIVRET_A = 0.02 #La BdF fait en sorte que taux_livret_A >= taux_inflation
+TAUX_LIVRET_A = 0.02
 
 # =============================================================================
 # 6. PARAMÈTRES RETRAITE
 # =============================================================================
-
 DUREE_RETRAITE = 20
 
 # =============================================================================
-# 6b. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
+# 7. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
 # =============================================================================
 
-# Date de retraite cible : DATE_DEBUT_T0 + NB_ANNEES_ACCUMULATION
-DATE_RETRAITE_GBI = "2041-12-31"
-
-# Protection du plancher : 80% signifie que le portefeuille ne peut jamais
-# descendre sous 80% de la richesse cible actualisée (Goal Price Index).
-FLOOR_PERCENT_GBI = 0.80
-
-# Durée de la phase de décumulation utilisée pour le calcul du GPI (années)
-DUREE_DECUMULATION_GBI = 20
-# Contributions et salaire : identiques aux stratégies TARGET_DATE / FIXED_MIX
-# Glide path TDF           : identique à TargetDateStrategy (profiles.allocation_initiale)
-
-# Graine aléatoire pour la reproductibilité de la simulation NS-VAR(1)
-GBI_SEED = 42
-
-# Calibration custom du modèle Nelson-Siegel + VAR(1) :
-# Décommenter et modifier pour surcharger les valeurs par défaut (Diebold-Li).
-# GBI_NS_VAR_CALIBRATION = {
-#     'beta0_init': 0.045,    # Niveau long terme initial
-#     'beta1_init': -0.020,   # Pente initiale
-#     'beta2_init': -0.010,   # Courbure initiale
-#     'lam': 0.0609,          # Paramètre de décroissance NS
-#     'A': np.array([[0.998, 0., 0.], [0., 0.990, 0.], [0., 0., 0.980]]),
-#     'b': (np.eye(3) - A) @ np.array([0.045, -0.020, -0.010]),
-#     'Sigma': <cholesky_matrix>,
-# }
+DATE_RETRAITE_GBI = "2041-12-31"  # DATE_DEBUT_T0 + NB_ANNEES_ACCUMULATION
+FLOOR_PERCENT_GBI = 0.80  # Plancher de sécurité (80% de la richesse cible)
+DUREE_DECUMULATION_GBI = 20  # Durée de décumulation pour le calcul du GPI
+GBI_SEED = 42  # Graine aléatoire pour NS-VAR(1)
 
 # =============================================================================
-# 7. PARAMÈTRES SIMULATION
+# 8. PARAMÈTRES SIMULATION
 # =============================================================================
 
-NB_SIMULATIONS = 5000
+NB_SIMULATIONS = 1000
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
 
 # =============================================================================
-# 8. PARAMÈTRES APPORT (TARGET DATE & FIXED MIX)
+# 9. PARAMÈTRES APPORT (Contributions dynamiques)
 # =============================================================================
 
-
-# Exponentiel 
 VITESSE_PROGRESSION = 0.10
 GAMMA_ELASTICITE = 1.5
 SEUIL_MATURITE = 0.935
 SALAIRE_MAX_CIBLE = SALAIRE_INITIAL * 2.5
 
-## =============================================================================
-# PARAMÈTRES DES CRISES (ESG)
+# =============================================================================
+# 10. PARAMÈTRES DES CRISES (ESG)
 # =============================================================================
 
-# 1. Modèle de Jump-Diffusion (Merton)
+# Modèle de Jump-Diffusion (Merton)
 SIMULER_CRISE_MERTON = False
-LAMBDA_CRISE = 0.05               # Fréquence (ex: 0.05 = 1 crise tous les 20 ans en moyenne)
-SEVERITE_EQ_MOYENNE = -0.20       # Choc moyen sur les actions (log-rendement)
-SEVERITE_EQ_SIGMA = 0.10          # Volatilité du choc actions
-SEVERITE_BD_MOYENNE = -0.02       # Choc moyen sur les obligations
-SEVERITE_BD_SIGMA = 0.05          # Volatilité du choc obligations
-SEVERITE_INFLATION_MOYENNE = 0.06  # Moyenne inflation
+LAMBDA_CRISE = 0.05  # Fréquence (1 crise tous les 20 ans)
+SEVERITE_EQ_MOYENNE = -0.20
+SEVERITE_EQ_SIGMA = 0.10
+SEVERITE_BD_MOYENNE = -0.02
+SEVERITE_BD_SIGMA = 0.05
+SEVERITE_INFLATION_MOYENNE = 0.06
 SEVERITE_INFLATION_SIGMA = 0.03
 
-# 2. Choc Déterministe (Crise Localisée)
+# Choc Déterministe (Crise Localisée)
 SIMULER_CRISE_LOCALISEE = False
-DATE_CRISE = "2030-03-01"         # Date d'injection de la crise
+DATE_CRISE = "2030-03-01"
 PARAMS_CRISE_DETAIL = {
-    'drop_eq': 0.35,              # Choc instantané actions (-35%)
-    'drop_bd': 0.05,              # Choc instantané obligations (-5%)
-    'duree_mois': 12,             # Période de stress (persistance)
-    'facteur_vol': 2.5            # Multiplicateur de volatilité post-choc
-    'facteur_vol_inf':2.5         # Multiplicateur de volatilité post-choc inflation
-    'spike_inf': 0.05             # Ajout de 5% à l'inflation de base en cas de pic
+    'drop_eq': 0.35,
+    'drop_bd': 0.05,
+    'duree_mois': 12,
+    'facteur_vol': 2.5,              
+    'facteur_vol_inf': 2.5,          
+    'spike_inf': 0.05
 }
 
 # =============================================================================
-# 9. PARAMÈTRES SPÉCIFIQUES À FALEH (Optimisation Stochastique)
+# 11. PARAMÈTRES FALEH (Optimisation Stochastique)
 # =============================================================================
-FALEH_NB_TREE_STAGES = 10    # Nombre de points de décision (stages) dans l'arbre
-FALEH_PENALTY_RUINE = 50   # Sévérité de la pénalité si le capital < passif
-FALEH_TARGET_WEALTH = None     # Si None, calculé automatiquement via le salaire final
 
+FALEH_NB_TREE_STAGES = 10
+FALEH_PENALTY_RUINE = 50
+FALEH_TARGET_WEALTH = None  # Calculé automatiquement si None
 
 # =============================================================================
-# 10. PARAMÈTRES DRAWDOWN
+# 12. PARAMÈTRES DRAWDOWN
 # =============================================================================
 
 DRAWDOWN_AVANT_APPORT = True
 
 # =============================================================================
-# 11. PROFILS D'INVESTISSEMENT
+# 13. PROFILS D'INVESTISSEMENT
 # =============================================================================
-
 PROFILS = {
     "PRUDENT": {
         "description": "Privilégie la sécurité",
         "equity": "Global Equity USD Hedged",
         "bond": "US Government Bond USD Unhedged",
-        "risk_aversion": 10.0,       # Gamma élevé = Très prudent (Faleh)
-        # Target Date
+        "risk_aversion": 10.0,
         "allocation_initiale": 0.90,
         "decroissance_annuelle": 0.03,
-        # Fixed Mix
         "fixed_allocation": 0.20
     },
     "MODERE": {
@@ -179,7 +141,7 @@ PROFILS = {
         "description": "Balance risque/rendement",
         "equity": "US Equity USD Unhedged",
         "bond": "USD Corporate Bond - USD Unhedged",
-        "risk_aversion": 4.0,        # Gamma standard (Faleh)
+        "risk_aversion": 4.0,
         "allocation_initiale": 0.95,
         "decroissance_annuelle": 0.01,
         "fixed_allocation": 0.60
@@ -197,7 +159,7 @@ PROFILS = {
         "description": "Maximise le rendement",
         "equity": "US Equity USD Unhedged",
         "bond": "US High Yield Bond BB-B - USD Unhedged",
-        "risk_aversion": 1.5,        # Gamma faible = Prêt à tout perdre pour gagner (Faleh)
+        "risk_aversion": 1.5,
         "allocation_initiale": 1.00,
         "decroissance_annuelle": 0.005,
         "fixed_allocation": 0.95
@@ -205,38 +167,33 @@ PROFILS = {
 }
 
 # =============================================================================
-# 12. VISUALISATION
+# 14. VISUALISATION
 # =============================================================================
 
+# Accumulation
 PLOT_CAPITAL = False
 PLOT_SALAIRE = False
 PLOT_APPORTS = False
-
 PLOT_CAPITAL_REEL = False
 PLOT_SALAIRE_REEL = False
 PLOT_APPORTS_REEL = False
 
-# Visualisation ciblée : Impact de la Crise (1 an avant -> 5 ans après) seulement pour crise localisée
+# Crises
 PLOT_CRISE_RENDEMENTS = False
 PLOT_CRISE_CAPITAL_NOMINAL = False
 PLOT_CRISE_CAPITAL_REEL = False
 
-#Décumulation
-
+# Décumulation
 PLOT_RETRAITE_CAPITAL = False
 PLOT_TAUX_REMPLACEMENT = False
-
 PLOT_RETRAITE_CAPITAL_REEL = False
 PLOT_TAUX_REMPLACEMENT_REEL = False
 
-#KPI
+# KPI
+PRINT_PERFORMANCE_GLOBALE = True
+PRINT_METRIQUES_RISQUE = True
 
-PRINT_PERFORMANCE_GLOBALE = True   # Affiche le TRI médian et la dispersion
-PRINT_METRIQUES_RISQUE = True     # Affiche Shortfall, VaR, Max Drawdown, Sortino, Max Underwater
-
-#Comparaison 
-
+# Comparaison
 PLOT_COMPARAISON_CAPITAL = False
 PLOT_COMPARAISON_CAPITAL_REEL = False
-PRINT_SYNTHESE_CAPITAL_RETRAITE = True  # Affiche le comparatif final des capitaux à l'âge de retraite
-
+PRINT_SYNTHESE_CAPITAL_RETRAITE = True

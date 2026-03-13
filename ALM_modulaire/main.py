@@ -26,21 +26,26 @@ def main():
     # =========================================================================
     dates = pd.date_range(start=settings.DATE_DEBUT_T0, periods=settings.NB_PERIODES_TOTAL, freq='ME')
 
-    # Génération unifiée : Historique avant la date pivot, Stochastique après pour TOUTES les stratégies
+    #Génération unifiée : Historique avant la date pivot, Stochastique après pour TOUTES les stratégies
     r_eq, r_bd, idx_split = economics.generators.generer_rendements_avec_backtest(
         mu_e, sigma_e, mu_b, sigma_b, corr_eb, dates, settings.DATE_PIVOT_BACKTEST, settings.NB_SIMULATIONS
     )
- 
-    modele_inflation = Inflation(
-        inflation_file, #même que dans la fonction generate_inflation mais où le trouver ?
-        livret_a_file,
-        date_depart=settings.DATE_DEBUT_T0, 
-        date_fin=date_fin_str, 
-        n_sim=settings.NB_SIMULATIONS
-    )
+    
+    # TEMPORAIRE : Désactivation de l'inflation - TODO: ajouter les fichiers CSV
+
+    #modele_inflation = Inflation(
+    #    inflation_file, #même que dans la fonction generate_inflation mais où le trouver ?
+    #    livret_a_file,
+     #   date_depart=settings.DATE_DEBUT_T0, 
+    #    date_fin=date_fin_str, 
+    #    n_sim=settings.NB_SIMULATIONS
+    #)
     
     # Étape C : On appuie sur le bouton de la machine pour récupérer les données brutes
-    r_inf = modele_inflation.trajectoires_brutes_inflation()
+    #r_inf = modele_inflation.trajectoires_brutes_inflation()
+
+    # TEMPORAIRE Génération simple d'inflation (backup)
+    r_inf = np.random.normal(0.02/12, 0.005, (settings.NB_PERIODES_TOTAL, settings.NB_SIMULATIONS))
 
     # Injection des chocs (Indépendant de la stratégie)
     if getattr(settings, 'SIMULER_CRISE_MERTON', False):
@@ -112,7 +117,7 @@ def main():
             if strat_actuelle == "TARGET_DATE":
                 strategy = strategies.TargetDateStrategy()
             elif strat_actuelle == "FIXED_MIX":
-                strategy = strategies.FixedMixStrategy()
+                 strategy = strategies.FixedMixStrategy(target_equity_pct=profiles.fixed_allocation)
             elif strat_actuelle == "FALEH":
                 from src.strategies.faleh_strategy import FalehStrategy
                 strategy = FalehStrategy(mu_e, sigma_e, mu_b, sigma_b, corr_eb)

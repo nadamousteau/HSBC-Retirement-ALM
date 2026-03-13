@@ -9,10 +9,12 @@ les propriétés statistiques clés (moments, corrélations).
 """
 
 import numpy as np
-from scipy.cluster.hierarchy import linkage, fcluster
-from scipy.spatial.distance import pdist
 from sklearn.cluster import KMeans
 
+
+# =============================================================================
+# CLASSE SCENARIO TREE BUILDER
+# =============================================================================
 
 class ScenarioTreeBuilder:
     """
@@ -20,18 +22,16 @@ class ScenarioTreeBuilder:
     
     Méthode :
     1. Génère N scénarios complets sur T périodes
-    2. À chaque nœud, regroupe les scénarios similaires
+    2. À chaque nœud, regroupe les scénarios similaires par K-Means
     3. Réduit progressivement le nombre de branches
     """
     
-    def __init__(self, max_branches_per_node=5, clustering_method='ward'):
+    def __init__(self, max_branches_per_node=5):
         """
         Args:
             max_branches_per_node: Nombre max de branches à chaque nœud
-            clustering_method: Méthode de clustering ('ward', 'complete', 'average')
         """
         self.max_branches = max_branches_per_node
-        self.clustering_method = clustering_method
     
     def build_tree(self, scenarios_equity, scenarios_bonds, nb_stages=None):
         """
@@ -40,7 +40,7 @@ class ScenarioTreeBuilder:
         Args:
             scenarios_equity: (T, N) - Rendements equity
             scenarios_bonds: (T, N) - Rendements bonds
-            nb_stages: Nombre de stages de décision (défaut: T//4)
+            nb_stages: Nombre de stages de décision (défaut: T//3)
         
         Returns:
             dict: Structure d'arbre avec:
@@ -48,10 +48,11 @@ class ScenarioTreeBuilder:
                 - 'nodes': Dictionnaire de nœuds {stage: {node_id: data}}
                 - 'transitions': Probabilités de transition
         """
+        
         nb_periods, nb_scenarios = scenarios_equity.shape
         
         if nb_stages is None:
-            # Par défaut, un stage tous les 3 mois (décisions trimestrielles)
+            # Stage tous les 3 mois (décisions trimestrielles)
             nb_stages = max(2, nb_periods // 3)
         
         # Périodes de décision (équidistantes)
@@ -76,7 +77,7 @@ class ScenarioTreeBuilder:
             }
         }
         
-        # Mapping initial : tous les scénarios à la racine
+        # Mapping initial
         current_mapping = {s: 0 for s in range(nb_scenarios)}
         tree['scenario_mapping'][0] = current_mapping.copy()
         
@@ -92,14 +93,13 @@ class ScenarioTreeBuilder:
             # Pour chaque nœud parent
             for parent_id, parent_data in tree['nodes'][stage_idx - 1].items():
                 parent_scenarios = parent_data['scenarios']
-                parent_prob = parent_data['probability'] # On récupère la proba du parent
+                parent_prob = parent_data['probability']
                 
                 if len(parent_scenarios) <= self.max_branches:
-                    # --- CAS 1 : PAS DE CLUSTERING (Fin de branche) ---
+                    # Cas 1 : Pas de clustering (fin de branche)
                     for i, s in enumerate(parent_scenarios):
                         child_id = len(tree['nodes'][stage_idx])
                         
-                        # CORRECTIF : Probabilité absolue = Prob parent * (1 / nombre de scénarios)
                         transition_prob = 1.0 / len(parent_scenarios)
                         node_prob = parent_prob * transition_prob
                         
@@ -109,25 +109,23 @@ class ScenarioTreeBuilder:
                             'mean_bd': scenarios_bonds[t, s],
                             'std_eq': 0.0,
                             'std_bd': 0.0,
-                            'probability': node_prob, # ✅ SOMME RESTERA À 1.0
+                            'probability': node_prob,
                             'parent': parent_id
                         }
                         new_mapping[s] = child_id
                         
-                        # Probabilité de transition
                         if parent_id not in tree['transitions'][stage_idx]:
                             tree['transitions'][stage_idx][parent_id] = {}
                         tree['transitions'][stage_idx][parent_id][child_id] = transition_prob
                 
                 else:
-                    # --- CAS 2 : CLUSTERING K-MEANS ---
+                    # Cas 2 : Clustering K-Means
                     clusters = self._cluster_scenarios(
                         scenarios_equity[t_prev:t+1, parent_scenarios],
                         scenarios_bonds[t_prev:t+1, parent_scenarios],
                         self.max_branches
                     )
 
-                    # Création des nœuds enfants
                     for cluster_id in range(self.max_branches):
                         mask = (clusters == cluster_id)
                         cluster_scenarios = parent_scenarios[mask]
@@ -137,12 +135,9 @@ class ScenarioTreeBuilder:
                         
                         child_id = len(tree['nodes'][stage_idx])
                         
-                        # On multiplie la probabilité du parent par la proportion de scénarios dans ce cluster
-                        # CORRECTIF : Probabilité absolue = Prob parent * (taille cluster / total parent)
                         transition_prob = len(cluster_scenarios) / len(parent_scenarios)
                         node_prob = parent_prob * transition_prob
 
-                        # Statistiques du cluster
                         tree['nodes'][stage_idx][child_id] = {
                             'scenarios': cluster_scenarios,
                             'mean_eq': np.mean(scenarios_equity[t, cluster_scenarios]),
@@ -153,11 +148,9 @@ class ScenarioTreeBuilder:
                             'parent': parent_id
                         }
                         
-                        # Mapping des scénarios
                         for s in cluster_scenarios:
                             new_mapping[s] = child_id
                         
-                        # Probabilité de transition
                         if parent_id not in tree['transitions'][stage_idx]:
                             tree['transitions'][stage_idx][parent_id] = {}
                         tree['transitions'][stage_idx][parent_id][child_id] = transition_prob
@@ -168,25 +161,32 @@ class ScenarioTreeBuilder:
     
     def _cluster_scenarios(self, eq_paths, bd_paths, nb_clusters):
         """
-        VERSION OPTIMISÉE : Remplace le clustering hiérarchique par K-Means
-        pour gérer les 50 000 scénarios de HSBC.
+        Clustering K-Means optimisé pour grands ensembles de scénarios.
+        
+        Args:
+            eq_paths: (nb_periods, nb_scenarios) - Trajectoires equity
+            bd_paths: (nb_periods, nb_scenarios) - Trajectoires bonds
+            nb_clusters: Nombre de clusters cibles
+        
+        Returns:
+            np.array: Labels de cluster pour chaque scénario
         """
+        
         nb_scenarios = eq_paths.shape[1]
         
         if nb_scenarios <= nb_clusters:
             return np.arange(nb_scenarios)
         
-        # 1. Construction des features (Rendements cumulés sur le segment)
+        # Construction des features (rendements cumulés)
         features = np.vstack([
             eq_paths.sum(axis=0), 
             bd_paths.sum(axis=0)
         ]).T
         
-        # 2. Normalisation standard
+        # Normalisation
         features = (features - features.mean(axis=0)) / (features.std(axis=0) + 1e-8)
         
-        # 3. K-MEANS (Rapide et efficace pour N > 10 000)
-        # On remplace linkage/fcluster par KMeans
+        # K-Means
         kmeans = KMeans(n_clusters=nb_clusters, n_init=5, random_state=42)
         clusters = kmeans.fit_predict(features)
         
@@ -236,6 +236,10 @@ class ScenarioTreeBuilder:
         print("="*60 + "\n")
 
 
+# =============================================================================
+# CLASSE ADAPTIVE TREE BUILDER
+# =============================================================================
+
 class AdaptiveTreeBuilder(ScenarioTreeBuilder):
     """
     Version adaptative qui ajuste le nombre de branches selon
@@ -257,31 +261,11 @@ class AdaptiveTreeBuilder(ScenarioTreeBuilder):
         if len(scenarios) < self.min_branches:
             return len(scenarios)
         
-        # Mesure de dispersion (coefficient de variation)
+        # Coefficient de variation
         cv = np.std(scenarios) / (np.abs(np.mean(scenarios)) + 1e-8)
         
         if cv > self.dispersion_threshold:
-            # Forte dispersion → augmenter les branches
             return min(self.max_branches, current_nb_branches + 1)
         else:
-            # Faible dispersion → réduire les branches
             return max(self.min_branches, current_nb_branches - 1)
 
-
-def apply_kmeans_clustering(self, data, n_clusters):
-    """
-    Prend les trajectoires (data) et les réduit à n_clusters nœuds.
-    C'est l'étape de discrétisation demandée par HSBC.
-    """
-    # data shape: (nb_scenarios, features)
-    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
-    kmeans.fit(data)
-    
-    # centroids = les valeurs moyennes des nœuds de l'arbre
-    centroids = kmeans.cluster_centers_
-    
-    # probabilités = poids de chaque nœud dans l'optimisation
-    labels = kmeans.labels_
-    probs = np.bincount(labels) / len(labels)
-    
-    return centroids, probs

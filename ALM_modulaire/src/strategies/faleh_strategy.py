@@ -21,6 +21,10 @@ from ..economics.tree_builder import ScenarioTreeBuilder
 import time
 
 
+# =============================================================================
+# CLASSE FALEH STRATEGY
+# =============================================================================
+
 class FalehStrategy(BaseStrategy):
     """
     Stratégie d'optimisation stochastique avec arbre de scénarios.
@@ -34,11 +38,11 @@ class FalehStrategy(BaseStrategy):
     
     # Mapping des profils vers gamma (aversion au risque)
     GAMMA_MAPPING = {
-        "PRUDENT": 10.0,    # Très risk-averse
-        "MODERE": 6.0,      # Risk-averse modéré
-        "EQUILIBRE": 4.0,   # Équilibré
-        "DYNAMIQUE": 2.5,   # Accepte le risque
-        "AGRESSIF": 1.5     # Risk-seeker
+        "PRUDENT": 10.0,
+        "MODERE": 6.0,
+        "EQUILIBRE": 4.0,
+        "DYNAMIQUE": 2.5,
+        "AGRESSIF": 1.5
     }
     
     def __init__(self, mu_e, sigma_e, mu_b, sigma_b, corr_eb, 
@@ -49,7 +53,6 @@ class FalehStrategy(BaseStrategy):
             target_wealth: Objectif de capital à la retraite (calculé si None)
             nb_tree_stages: Nombre de stages dans l'arbre de décision
         """
-        # Récupération du gamma selon le profil
         self.gamma = self.GAMMA_MAPPING.get(settings.PROFIL_CHOISI, 4.0)
         
         # Paramètres de marché
@@ -59,11 +62,12 @@ class FalehStrategy(BaseStrategy):
         self.sigma_b = sigma_b
         self.corr_eb = corr_eb
         
-       # Générateur de scénarios avec RSLN activé
+        # Générateur de scénarios avec RSLN activé
         self.gse = EnhancedGSE(
             mu_e, sigma_e, mu_b, sigma_b, corr_eb,
-            use_markov_regimes=True  #  CORRECTION
+            use_markov_regimes=True
         )
+        
         # Arbre de scénarios
         self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=3)
         self.tree = None
@@ -71,7 +75,6 @@ class FalehStrategy(BaseStrategy):
         
         # Objectif de richesse
         if target_wealth is None:
-            # Estimation : capital moyen attendu avec stratégie équilibrée
             self.target_wealth = self._estimate_target_wealth()
         else:
             self.target_wealth = target_wealth
@@ -90,41 +93,37 @@ class FalehStrategy(BaseStrategy):
             return
                 
         nb_periods = len(dates)
-        nb_scenarios = settings.NB_SIMULATIONS  # Limite pour performance
+        nb_scenarios = settings.NB_SIMULATIONS
         
-        print(f"\n Construction de l'arbre de scénarios Faleh...")
+        print(f"\nConstruction de l'arbre de scénarios Faleh...")
         print(f"   • Profil : {settings.PROFIL_CHOISI}")
         print(f"   • Gamma (aversion risque) : {self.gamma:.2f}")
         print(f"   • Scénarios : {nb_scenarios}")
         print(f"   • Stages : {self.nb_tree_stages}")
 
-        # 1. Génération massive (Vectorisée et rapide via NumPy)
-        # On récupère les trajectoires "Spaghettis"
-        t0=time.time()
+        # Génération des scénarios
+        t0 = time.time()
         r_eq, r_bd = self.gse.generate_scenarios_simple(
             nb_periods, nb_scenarios, seed=42
         )
-        t1=time.time()
+        t1 = time.time()
         print(f"   • Scénarios générés en {t1-t0:.2f} secondes")
 
-        # 2. Construction de l'arbre RÉCURSIVE
-        # C'est ici que ScenarioTreeBuilder va utiliser K-Means à chaque embranchement
-        # pour réduire les 50 000 trajectoires en N branches gérables (ex: 5 par nœud)
+        # Construction de l'arbre
         self.tree = self.tree_builder.build_tree(
             r_eq, 
             r_bd, 
             nb_stages=self.nb_tree_stages
         )
-        t2=time.time()
+        t2 = time.time()
         print(f"   • Arbre construit en {t2-t1:.2f} secondes")
     
-
-        # 3. Visualisation de la compression
+        # Visualisation de la compression
         self.tree_builder.visualize_tree_structure(self.tree)
 
-        # 4. Calcul des décisions optimales (Backward Induction)
+        # Calcul des décisions optimales (Backward Induction)
         self._precompute_optimal_allocations()
-        t3=time.time()
+        t3 = time.time()
         print(f"   • Allocations optimales pré-calculées en {t3-t2:.2f} secondes")
 
         self.scenarios_generated = True
@@ -136,31 +135,24 @@ class FalehStrategy(BaseStrategy):
         
         Interface conforme à BaseStrategy.
         """
-        # Initialisation de l'arbre si nécessaire
         if not self.scenarios_generated:
-            # Workaround : on ne peut pas passer dates ici
-            # On va initialiser avec une estimation
-            pass
+            return self._fallback_allocation(current_age)
         
         # Détermination du stage actuel
         if self.tree is not None:
-            # Trouver le stage le plus proche
             stages = np.array(self.tree['stages'])
             stage_idx = np.argmin(np.abs(stages - t_index))
         else:
-            # Fallback : allocation progressive
             return self._fallback_allocation(current_age)
         
         # Récupération de l'allocation optimale
         if stage_idx in self.optimal_allocations:
-            # Allocation moyenne pondérée par les probabilités
             alloc_data = self.optimal_allocations[stage_idx]
             weights = np.array([node['probability'] for node in alloc_data])
             allocations = np.array([node['allocation_equity'] for node in alloc_data])
             
             pct_equity = np.average(allocations, weights=weights)
         else:
-            # Fallback
             pct_equity = self._fallback_allocation(current_age)[0]
         
         # Borner entre 5% et 95%
@@ -175,7 +167,6 @@ class FalehStrategy(BaseStrategy):
         if self.tree is None:
             return False
         
-        # Rééquilibrer uniquement aux stages de décision
         return t_index in self.tree['stages']
     
     def _precompute_optimal_allocations(self):
@@ -183,19 +174,16 @@ class FalehStrategy(BaseStrategy):
         Calcule les allocations optimales pour chaque nœud de l'arbre
         par programmation dynamique backward.
         """
-        print(f"\n Optimisation dynamique stochastique...")
+        print(f"\nOptimisation dynamique stochastique...")
         
         nb_stages = len(self.tree['stages'])
         
         # Initialisation : valeur terminale
-        # V_T(W) = U(W) où W est la richesse finale
         terminal_values = {}
         for node_id, node_data in self.tree['nodes'][nb_stages - 1].items():
-            # Valeur terminale = utilité du surplus (W - L)
-            # Pour simplification, on prend l'utilité de la richesse
             terminal_values[node_id] = {
-                'value': 0,  # Sera calculé dans le backward pass
-                'allocation_equity': 0.5  # Allocation neutre au dernier stage
+                'value': 0,
+                'allocation_equity': 0.5
             }
         
         self.optimal_allocations[nb_stages - 1] = [
@@ -212,13 +200,11 @@ class FalehStrategy(BaseStrategy):
             stage_allocations = []
             
             for node_id, node_data in self.tree['nodes'][stage_idx].items():
-                # Statistiques du nœud
                 mean_eq = node_data['mean_eq']
                 mean_bd = node_data['mean_bd']
                 std_eq = max(node_data['std_eq'], 0.01)
                 std_bd = max(node_data['std_bd'], 0.01)
                 
-                # Optimisation de l'allocation
                 optimal_w = self._optimize_allocation_at_node(
                     mean_eq, mean_bd, std_eq, std_bd,
                     stage_idx, node_id
@@ -234,7 +220,7 @@ class FalehStrategy(BaseStrategy):
             
             print(f"   Stage {stage_idx:2d}: Optimisé {len(stage_allocations)} nœuds")
         
-        print(f" Optimisation terminée !\n")
+        print(f"Optimisation terminée !\n")
     
     def _optimize_allocation_at_node(self, mean_eq, mean_bd, std_eq, std_bd, stage, node_id):
         """
@@ -243,35 +229,30 @@ class FalehStrategy(BaseStrategy):
         Maximise l'utilité espérée : E[U(W_t+1)]
         où U(W) = W^(1-γ) / (1-γ)
         """
-        # Fonction objectif : - E[U(W)] (minimisation)
         def objective(w):
             """w = poids equity (entre 0 et 1)"""
             w = max(0.0, min(1.0, w))
             
-            # Rendement du portefeuille (approximation normale)
+            # Rendement du portefeuille
             portfolio_return = w * mean_eq + (1 - w) * mean_bd
             portfolio_std = np.sqrt((w * std_eq)**2 + ((1-w) * std_bd)**2 + 
                                     2 * w * (1-w) * self.corr_eb * std_eq * std_bd)
             
             # Approximation de l'utilité espérée (Taylor au 2nd ordre)
-            # E[U(1 + R)] ≈ U(1 + μ) + 0.5 * U''(1 + μ) * σ²
             W_expected = 1 + portfolio_return
             
+            # Pénalité de ruine
             penalty = 0.0
             if W_expected < self.target_wealth:
                 shortfall = self.target_wealth - W_expected
                 penalty = settings.FALEH_PENALTY_RUINE * (shortfall ** 2)
 
             if self.gamma == 1.0:
-                # Cas log-utilité
                 utility = np.log(W_expected) - 0.5 * (portfolio_std / W_expected)**2
             else:
-                # Utilité CRRA
                 utility = (W_expected**(1 - self.gamma)) / (1 - self.gamma)
-                # Correction pour la variance (approximation du 2nd ordre)
                 utility -= 0.5 * self.gamma * (W_expected**(-self.gamma - 1)) * portfolio_std**2
             
-            # Objectif = - (utilité - pénalité)
             return -(utility - penalty)
         
         # Contraintes : w ∈ [0, 1]
@@ -299,7 +280,6 @@ class FalehStrategy(BaseStrategy):
             )
             optimal_w = result.x[0]
         except:
-            # Fallback en cas d'échec
             optimal_w = x0
         
         return optimal_w
@@ -307,20 +287,28 @@ class FalehStrategy(BaseStrategy):
     def _estimate_target_wealth(self):
         """
         Estime l'objectif de richesse basé sur les paramètres du profil.
+        Calcul correct de la valeur future avec contributions périodiques.
         """
-        # Estimation simple : 80% du capital espéré avec allocation équilibrée
         T = settings.NB_ANNEES_ACCUMULATION
-        r_portfolio = 0.6 * self.mu_e + 0.4 * self.mu_b  # Mix 60/40
+        r_portfolio = 0.6 * self.mu_e + 0.4 * self.mu_b
         
-        # Capital initial + apports
-        total_contributions = settings.CAPITAL_INITIAL
-        for t in range(T):
-            # Apport moyen annuel (simplifié)
-            apport_annuel = settings.SALAIRE_INITIAL * settings.TAUX_APPORT_BASE * 12
-            total_contributions += apport_annuel
+        # Valeur future du capital initial
+        fv_capital_initial = settings.CAPITAL_INITIAL * (1 + r_portfolio) ** T
         
-        # Capitalisation
-        target = total_contributions * (1 + r_portfolio) ** T * 0.8
+        # Valeur future des contributions mensuelles (formule de l'annuité)
+        monthly_contribution = settings.SALAIRE_INITIAL * settings.TAUX_APPORT_BASE
+        r_monthly = r_portfolio / 12
+        nb_months = T * 12
+        
+        # Formule : FV = C × [(1 + r)^n - 1] / r
+        if abs(r_monthly) > 1e-10:
+            fv_contributions = monthly_contribution * ((1 + r_monthly) ** nb_months - 1) / r_monthly
+        else:
+            # Cas limite : taux proche de 0
+            fv_contributions = monthly_contribution * nb_months
+        
+        # Target = 80% de la valeur future totale (facteur de prudence)
+        target = (fv_capital_initial + fv_contributions) * 0.8
         
         return target
     
@@ -347,6 +335,10 @@ class FalehStrategy(BaseStrategy):
         }
 
 
+# =============================================================================
+# CLASSE SIMPLIFIED FALEH STRATEGY (OPTIONNELLE)
+# =============================================================================
+
 class SimplifiedFalehStrategy(BaseStrategy):
     """
     Version simplifiée de Faleh sans arbre complet.
@@ -365,7 +357,6 @@ class SimplifiedFalehStrategy(BaseStrategy):
         self.sigma_b = sigma_b
         self.corr_eb = corr_eb
         
-        # Cache de l'allocation optimale
         self._cached_allocation = None
     
     def get_allocation(self, t_index, current_age):

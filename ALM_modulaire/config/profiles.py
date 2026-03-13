@@ -1,29 +1,31 @@
-from config import settings
-
 """
 MODULE DE GESTION DU PROFIL ACTIF
-=================================
-Ce module récupère le profil sélectionné dans settings.py et expose
-les variables nécessaires (Equity, Bond) pour le reste de l'application.
+==================================
+Récupère le profil sélectionné dans settings.py et expose les variables
+nécessaires (Equity, Bond, allocations) pour le reste de l'application.
 """
 
-# Récupération du dictionnaire correspondant au profil choisi
-# Logique originale : profil = PROFILS[PROFIL_CHOISI]
+from config import settings
+
+# =============================================================================
+# EXTRACTION DU PROFIL ACTIF
+# =============================================================================
+
 active_profile = settings.PROFILS[settings.PROFIL_CHOISI]
 
-# Extraction des noms d'actifs pour le mapping Excel
-# Logique originale : Equity = profil["equity"]
 Equity = active_profile["equity"]
-
-# Logique originale : Bond = profil["bond"]
 Bond = active_profile["bond"]
 
-# On récupère l'aversion au risque (Gamma). 
-# On met 4.0 par défaut (Équilibré) si la clé n'existe pas pour éviter un plantage.
+# =============================================================================
+# PARAMÈTRES DE STRATÉGIE
+# =============================================================================
+
+# Aversion au risque (défaut : 4.0 pour profil EQUILIBRE)
 gamma = active_profile.get("risk_aversion", 4.0)
 
-# Paramètres d'allocation (accessibles directement via active_profile, 
-# mais on peut définir des alias si besoin pour la clarté dans les stratégies)
-allocation_initiale = active_profile.get("allocation_initiale")
-decroissance_annuelle = active_profile.get("decroissance_annuelle")
-fixed_allocation = active_profile.get("fixed_allocation")
+# Paramètres Target Date
+allocation_initiale = active_profile.get("allocation_initiale", 0.95)      
+decroissance_annuelle = active_profile.get("decroissance_annuelle", 0.01)  
+
+# Paramètre Fixed Mix
+fixed_allocation = active_profile.get("fixed_allocation", 0.60)            
