@@ -118,6 +118,12 @@ def generer_rendements_avec_backetest(mu_e, sigma_e, mu_b, sigma_b, corr, dates,
 
 
 def generer_inflation_vasicek(nb_periodes, nb_sims, kappa=None, theta=None, sigma=None, seed=None):
+    # IMPORTANT : On pré-convertit manuellement les paramètres annuels → mensuels
+    # pour contrôler inflation_init (= theta_m, en fréquence mensuelle).
+    # Si on laissait frequency="auto", simulate() convertirait kappa/theta/sigma
+    # mais PAS inflation_init, créant un saut artificiel au premier pas.
+    # frequency="monthly" empêche simulate() de reconvertir une seconde fois.
+    
     """
     Génère des trajectoires d'inflation stochastique via le modèle Vasicek.
     

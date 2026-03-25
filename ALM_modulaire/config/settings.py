@@ -61,6 +61,31 @@ FLOOR_PERCENT_GBI = 0.80  # Plancher de sécurité (80% de la richesse cible)
 GBI_SEED = 42  # Graine aléatoire pour NS-VAR(1)
 
 # =============================================================================
+# 7. PARAMÈTRES DÉCUMULATION (Phase de retraite)
+# =============================================================================
+
+SIMULER_DECUMULATION = True
+
+# Horizon de la retraite
+NB_ANNEES_DECUMULATION = 25          # Durée de la simulation post-retraite
+
+# Volontés du client — Retrait plancher + variable
+RETRAIT_MENSUEL_REEL = 2000          # Retrait plancher en € constants (besoins essentiels)
+TAUX_DISTRIBUTION_SURPLUS = 0.30     # Part du surplus distribuée (0 = survie max, 1 = profiter max)
+TAUX_ACTUALISATION_PLANCHER = 0.02   # Taux pour actualiser les retraits futurs (prudence du plancher)
+
+# Stratégie d'investissement en retraite (peut différer de l'accumulation)
+# Choix parmi : "FIXED_MIX", "TARGET_DATE", "GBI", "FALEH"
+STRATEGIE_DECUMULATION = "TARGET_DATE"
+
+# Profil d'investissement en retraite (peut différer de l'accumulation)
+# Choix parmi : "PRUDENT", "MODERE", "EQUILIBRE", "DYNAMIQUE", "AGRESSIF"
+PROFIL_DECUMULATION = "PRUDENT"
+
+# Seed pour les rendements de la phase retraite (continuité avec l'accumulation)
+DECUMULATION_SEED = None             # None = prolongation stochastique des trajectoires
+
+# =============================================================================
 # 11. PARAMÈTRES SIMULATION
 # =============================================================================
 
@@ -183,11 +208,17 @@ PLOT_CRISE_RENDEMENTS = False
 PLOT_CRISE_CAPITAL_NOMINAL = False
 PLOT_CRISE_CAPITAL_REEL = False
 
-# KPI
+# KPI Accumulation
 PRINT_PERFORMANCE_GLOBALE = True
 PRINT_METRIQUES_RISQUE = True
 
-# Comparaison
+# Comparaison Accumulation
 PLOT_COMPARAISON_CAPITAL = False
 PLOT_COMPARAISON_CAPITAL_REEL = False
-PRINT_SYNTHESE_CAPITAL_RETRAITE = True
+PRINT_SYNTHESE_CAPITAL_RETRAITE = False
+
+# Décumulation
+PLOT_DECUMULATION_CAPITAL = True          # Évolution du capital restant en retraite
+PLOT_DECUMULATION_CAPITAL_REEL = False    # Idem en euros constants
+PLOT_DECUMULATION_RETRAITS = True         # Décomposition plancher / variable des retraits
+PRINT_DECUMULATION_METRICS = True         # Rapport console complet

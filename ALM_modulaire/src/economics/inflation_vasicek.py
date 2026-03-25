@@ -85,37 +85,22 @@ class VasicekInflation:
                 + diffusion_factor * shock
             )
         
-        # Clamp pour éviter les valeurs négatives ou non-réalistes
-        # Min: -2%, Max: 10% (limites raisonnables)
-        inflation = np.clip(inflation, -0.02, 0.10)
+        
         
         return inflation
     
     def to_cumulative_factor(self, inflation_monthly):
         """
-        Convertit des taux d'inflation mensuels en facteurs cumulatifs d'actualisation.
-        
-        Utile pour déflatation a posteriori : capital_reel = capital_nominal / factor
-        
+        Convertit des taux d'inflation mensuels en facteurs cumulatifs.
+    
+        Utile pour déflation a posteriori : capital_reel = capital_nominal / factor(T)
+    
         Args:
             inflation_monthly : np.array (nb_periods, nb_scenarios) - taux mensuels
-            
         Returns:
-            np.array : (nb_periods, nb_scenarios) - facteurs cumulatifs (1 + inflation annualisée)^années
+            np.array (nb_periods, nb_scenarios) — facteur cumulatif mois par mois
         """
-        nb_periods = inflation_monthly.shape[0]
-        factors = np.ones_like(inflation_monthly)
-        
-        # Cumul annuel (tous les 12 mois)
-        for t in range(1, nb_periods):
-            mois_in_year = (t % 12) if t % 12 != 0 else 12
-            if t % 12 == 0:  # Fin d'année
-                inflation_annual = np.prod(1 + inflation_monthly[t-11:t+1, :], axis=0) - 1
-                factors[t, :] = factors[t-1, :] * (1 + inflation_annual)
-            else:
-                factors[t, :] = factors[t-1, :]
-        
-        return factors
+        return np.cumprod(1 + inflation_monthly, axis=0)
     
     def to_indexation_factor(self, inflation_monthly):
         """
@@ -167,7 +152,9 @@ class VasicekInflation:
         Returns:
             tuple : (kappa_monthly, theta_monthly, sigma_monthly)
         """
-        # kappa ne change pas avec la fréquence (c'est une vitesse de retour à la moyenne)
+        # kappa est un paramètre continu (unité : an⁻¹). Pas de conversion nécessaire
+        # car la discrétisation d'Euler applique kappa * dt, et c'est dt = 1/12 qui
+        # assure l'ajustement d'échelle temporelle.
         kappa_monthly = kappa_annual
         
         # theta doit être divisé par 12 (moyenne mensuelle)
