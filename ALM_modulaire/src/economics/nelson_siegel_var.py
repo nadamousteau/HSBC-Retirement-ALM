@@ -254,7 +254,7 @@ def build_gbi_curves(factors, lam=None, nb_maturities=360):
 # ---------------------------------------------------------------------------
 
 def simulate_gbi_monte_carlo(nb_sims=None, nb_months=None,
-                             calibration=None, seed=None):
+                             calibration=None, rng=None):
     """
     Point d'entrée principal : simule N scénarios de courbes GBI sur T mois
     via le modèle Nelson-Siegel + VAR(1).
@@ -268,7 +268,7 @@ def simulate_gbi_monte_carlo(nb_sims=None, nb_months=None,
         nb_sims     : int ou None — nombre de scénarios (défaut: settings.NB_SIMULATIONS)
         nb_months   : int ou None — horizon en mois (défaut: settings.NB_PERIODES_TOTAL)
         calibration : dict ou None — paramètres du modèle
-        seed        : int ou None — graine pour la reproductibilité
+        rng         : np.random.Generator ou None
 
     Returns:
         gbi_tensor  : ndarray (N, T, 360) — taux GBI annualisés
@@ -283,7 +283,8 @@ def simulate_gbi_monte_carlo(nb_sims=None, nb_months=None,
     if calibration is None:
         calibration = get_calibration()
 
-    rng = np.random.default_rng(seed)
+    if rng is None:
+        rng = np.random.default_rng()
 
     # Étape 1 : simulation des facteurs
     factors = simulate_ns_factors(nb_sims, nb_months,

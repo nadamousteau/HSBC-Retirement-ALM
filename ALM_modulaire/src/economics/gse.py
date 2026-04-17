@@ -54,35 +54,35 @@ class MarkovRegimeSwitching:
         if not np.allclose(row_sums, 1.0):
             raise ValueError("La matrice de transition doit avoir des lignes sommant à 1")
     
-    def simulate_regimes(self, nb_periods, nb_scenarios, initial_regime=0, seed=None):
+    def simulate_regimes(self, nb_periods, nb_scenarios, initial_regime=0, rng=None):
         """
         Simule l'évolution des régimes selon une chaîne de Markov.
-        
+
         Args:
             nb_periods: Nombre de périodes à simuler
             nb_scenarios: Nombre de trajectoires parallèles
             initial_regime: Régime de départ (0=Normal par défaut)
-            seed: Seed pour reproductibilité
-        
+            rng: np.random.Generator ou None (entropie OS si None)
+
         Returns:
             np.array: (nb_periods, nb_scenarios) - indices de régimes [0, 1, 2]
         """
-        if seed is not None:
-            np.random.seed(seed)
-        
+        if rng is None:
+            rng = np.random.default_rng()
+
         regimes = np.zeros((nb_periods, nb_scenarios), dtype=int)
         regimes[0, :] = initial_regime
-        
+
         # Pré-calcul des probabilités cumulées
         cumsum_probs = np.cumsum(self.transition_matrix, axis=1)
-        
+
         for t in range(1, nb_periods):
             for s in range(nb_scenarios):
                 current_regime = regimes[t-1, s]
-                draw = np.random.rand()
+                draw = rng.random()
                 next_regime = np.searchsorted(cumsum_probs[current_regime, :], draw)
                 regimes[t, s] = next_regime
-        
+
         return regimes
     
     def get_stationary_distribution(self):
@@ -215,52 +215,52 @@ class EnhancedGSE:
             'bear': {'mu': -0.5, 'sigma': 1.8}
         }
     
-    def generate_scenarios(self, nb_periods, nb_scenarios, seed=None):
+    def generate_scenarios(self, nb_periods, nb_scenarios, rng=None):
         """
         Génère des scénarios avec régimes de marché, volatilité stochastique et Vasicek.
-        
+
         Returns:
-            tuple: 
+            tuple:
                 - Si generate_inflation=False: (r_equity, r_bonds, regimes, volatilities)
                 - Si generate_inflation=True: (r_equity, r_bonds, r_inflation, regimes, volatilities)
         """
-        if seed is not None:
-            np.random.seed(seed)
-        
+        if rng is None:
+            rng = np.random.default_rng()
+
         dt = 1.0 / 12.0  # Pas mensuel
-                
+
         # Initialisation
         r_eq = np.zeros((nb_periods, nb_scenarios))
         r_bd = np.zeros((nb_periods, nb_scenarios))
         vol_equity = np.ones((nb_periods, nb_scenarios)) * self.sigma_e
-        
+
         # Vasicek : Initialisation du taux court-terme
         r_t = np.ones(nb_scenarios) * self.mu_b
-        
+
         # Inflation (optionnel)
         if self.generate_inflation:
             r_inflation = np.zeros((nb_periods, nb_scenarios))
             infl_t = np.ones(nb_scenarios) * 0.02
-        
+
         # Régimes de marché (RSLN avec Markov ou i.i.d.)
         if self.use_markov_regimes:
             regimes = self.regime_model.simulate_regimes(
-                nb_periods, nb_scenarios, 
+                nb_periods, nb_scenarios,
                 initial_regime=0,
-                seed=seed
+                rng=rng
             )
         else:
             # Legacy : régimes i.i.d. (pour comparaison)
             regimes = np.zeros((nb_periods, nb_scenarios), dtype=int)
             regime_probs = {'normal': 0.70, 'bull': 0.15, 'bear': 0.15}
-            
+
             for t in range(nb_periods):
-                regime_draw = np.random.rand(nb_scenarios)
+                regime_draw = rng.random(nb_scenarios)
                 regimes[t, :] = np.where(
                     regime_draw < regime_probs['bear'], 2,
                     np.where(regime_draw < regime_probs['bear'] + regime_probs['bull'], 1, 0)
                 )
-        
+
         # Matrice de corrélation
         s_e = self.sigma_e * np.sqrt(dt)
         s_b = self.sigma_b * np.sqrt(dt)
@@ -269,66 +269,66 @@ class EnhancedGSE:
             [self.corr_eb * s_e * s_b, s_b**2]
         ])
         L = np.linalg.cholesky(cov_matrix)
-        
+
         # Boucle temporelle
         for t in range(nb_periods):
             # 1. Volatilité stochastique (Heston pour Equity)
             if t > 0:
-                vol_shock = np.random.randn(nb_scenarios) * self.vol_of_vol * np.sqrt(dt)
-                vol_equity[t, :] = (vol_equity[t-1, :] + 
-                                     self.kappa * (self.sigma_e - vol_equity[t-1, :]) * dt + 
+                vol_shock = rng.standard_normal(nb_scenarios) * self.vol_of_vol * np.sqrt(dt)
+                vol_equity[t, :] = (vol_equity[t-1, :] +
+                                     self.kappa * (self.sigma_e - vol_equity[t-1, :]) * dt +
                                      vol_shock)
                 vol_equity[t, :] = np.maximum(vol_equity[t, :], 0.05)
-            
+
             # 2. Génération des chocs corrélés
-            z = np.random.randn(2, nb_scenarios)
+            z = rng.standard_normal((2, nb_scenarios))
             chocs = L @ z
-            
+
             # 3. Vasicek pour les taux
-            dr_t = (self.kappa_bonds * (self.theta_bonds - r_t) * dt + 
+            dr_t = (self.kappa_bonds * (self.theta_bonds - r_t) * dt +
                     s_b * chocs[1, :])
             r_t += dr_t
             r_t = np.maximum(r_t, 0.001)
-            
+
             # 4. Application des régimes (Equity)
             for s in range(nb_scenarios):
                 regime = regimes[t, s]
                 regime_name = ['normal', 'bull', 'bear'][regime]
                 mult = self.regime_multipliers[regime_name]
-                
+
                 mu_adj = self.mu_e * mult['mu']
                 sigma_adj = vol_equity[t, s] * mult['sigma']
-                
-                r_eq[t, s] = (mu_adj * dt - 0.5 * (sigma_adj * np.sqrt(dt))**2 + 
+
+                r_eq[t, s] = (mu_adj * dt - 0.5 * (sigma_adj * np.sqrt(dt))**2 +
                               sigma_adj * np.sqrt(dt) * chocs[0, s])
-            
+
             # 5. Rendement Bonds (basé sur taux court Vasicek)
             r_bd[t, :] = r_t * dt - 0.5 * (s_b)**2 + chocs[1, :]
-            
+
             # 6. Inflation (optionnel, processus AR(1))
             if self.generate_inflation:
                 alpha = 0.7
                 pi_target = 0.02
-                infl_shock = np.random.randn(nb_scenarios) * 0.003
+                infl_shock = rng.standard_normal(nb_scenarios) * 0.003
                 infl_t = alpha * infl_t + (1 - alpha) * pi_target + infl_shock
                 infl_t = np.clip(infl_t, -0.02, 0.10)
                 r_inflation[t, :] = infl_t
-        
+
         # Retour
         if self.generate_inflation:
             return r_eq, r_bd, r_inflation, regimes, vol_equity
         else:
             return r_eq, r_bd, regimes, vol_equity
-    
-    def generate_scenarios_simple(self, nb_periods, nb_scenarios, seed=None):
+
+    def generate_scenarios_simple(self, nb_periods, nb_scenarios, rng=None):
         """
         Version simplifiée sans régimes (pour compatibilité avec le framework existant).
-        
+
         Returns:
             tuple: (r_equity, r_bonds)
         """
-        result = self.generate_scenarios(nb_periods, nb_scenarios, seed)
-        
+        result = self.generate_scenarios(nb_periods, nb_scenarios, rng=rng)
+
         if self.generate_inflation:
             r_eq, r_bd, r_infl, _, _ = result
             return r_eq, r_bd, r_infl

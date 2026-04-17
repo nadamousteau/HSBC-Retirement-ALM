@@ -45,66 +45,78 @@ class FalehStrategy(BaseStrategy):
         "AGRESSIF": 1.5
     }
     
-    def __init__(self, mu_e, sigma_e, mu_b, sigma_b, corr_eb, 
-                 target_wealth=None, nb_tree_stages=settings.FALEH_NB_TREE_STAGES):
+    def __init__(self, mu_e, sigma_e, mu_b, sigma_b, corr_eb,
+                 target_wealth=None, nb_tree_stages=settings.FALEH_NB_TREE_STAGES,
+                 rng=None):
         """
         Args:
             mu_e, sigma_e, mu_b, sigma_b, corr_eb: Paramètres de marché
             target_wealth: Objectif de capital à la retraite (calculé si None)
             nb_tree_stages: Nombre de stages dans l'arbre de décision
+            rng: np.random.Generator ou None — injecté par le bundle global
+                 (rng_bundle["faleh_gse"]). Si None, fallback non-reproductible.
         """
         self.gamma = self.GAMMA_MAPPING.get(settings.PROFIL_CHOISI, 4.0)
-        
+
         # Paramètres de marché
         self.mu_e = mu_e
         self.sigma_e = sigma_e
         self.mu_b = mu_b
         self.sigma_b = sigma_b
         self.corr_eb = corr_eb
-        
+
         # Générateur de scénarios avec RSLN activé
         self.gse = EnhancedGSE(
             mu_e, sigma_e, mu_b, sigma_b, corr_eb,
             use_markov_regimes=True
         )
-        
+
         # Arbre de scénarios
         self.tree_builder = ScenarioTreeBuilder(max_branches_per_node=settings.FALEH_MAX_BRANCHES)
         self.tree = None
         self.nb_tree_stages = nb_tree_stages
-        
+
+        # RNG dédié (bundle "faleh_gse")
+        self.rng = rng if rng is not None else np.random.default_rng()
+
         # Objectif de richesse
         if target_wealth is None:
             self.target_wealth = self._estimate_target_wealth()
         else:
             self.target_wealth = target_wealth
-        
+
         # Cache pour les allocations optimales
         self.optimal_allocations = {}
         self.current_stage = 0
         self.scenarios_generated = False
-    
-    def initialize_tree(self, dates):
+
+    def initialize_tree(self, dates, rng=None):
         """
         Génère les scénarios et construit l'arbre de décision.
         Appelé une seule fois au début de la simulation.
+
+        Args:
+            dates : DatetimeIndex — horizon de l'arbre (accumulation seulement).
+            rng   : np.random.Generator ou None — override temporaire du rng
+                    d'instance (utile pour les tests).
         """
         if self.scenarios_generated:
             return
-                
+
         nb_periods = len(dates)
         nb_scenarios = settings.NB_SIMULATIONS
-        
+        rng_eff = rng if rng is not None else self.rng
+
         print(f"\nConstruction de l'arbre de scénarios Faleh...")
         print(f"   • Profil : {settings.PROFIL_CHOISI}")
         print(f"   • Gamma (aversion risque) : {self.gamma:.2f}")
         print(f"   • Scénarios : {nb_scenarios}")
         print(f"   • Stages : {self.nb_tree_stages}")
 
-        # Génération des scénarios
+        # Génération des scénarios (tirés du RNG bundle["faleh_gse"])
         t0 = time.time()
         r_eq, r_bd = self.gse.generate_scenarios_simple(
-            nb_periods, nb_scenarios, seed=settings.FALEH_SEED
+            nb_periods, nb_scenarios, rng=rng_eff
         )
         t1 = time.time()
         print(f"   • Scénarios générés en {t1-t0:.2f} secondes")

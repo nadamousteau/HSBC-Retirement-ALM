@@ -39,54 +39,52 @@ class VasicekInflation:
         self.sigma = sigma
         self.inflation_init = inflation_init if inflation_init is not None else theta
         
-    def simulate(self, nb_periods, nb_scenarios, dt=1/12, seed=None, frequency="auto"):
+    def simulate(self, nb_periods, nb_scenarios, dt=1/12, rng=None, frequency="auto"):
         """
         Simule des trajectoires d'inflation selon Vasicek (discrétisation d'Euler).
-        
+
         Args:
             nb_periods   : Nombre de périodes (mois)
             nb_scenarios : Nombre de trajectoires parallèles
             dt           : Pas de temps en années (1/12 pour mensuel)
-            seed         : Graine aléatoire pour reproductibilité
+            rng          : np.random.Generator ou None (entropie OS si None)
             frequency    : "auto" (défaut) ou "annual" ou "monthly"
                           Si "annual", convertit automatiquement les params annuels → mensuels
-            
+
         Returns:
             np.array : (nb_periods, nb_scenarios) - taux d'inflation mensuels
-        
+
         IMPORTANT : Si vous utilisez des paramètres annualisés (ex: calibration_default()),
                    assurez-vous que frequency="auto" ou "annual".
         """
-        if seed is not None:
-            np.random.seed(seed)
-        
+        if rng is None:
+            rng = np.random.default_rng()
+
         # Adapter les paramètres selon la fréquence
         kappa = self.kappa
         theta = self.theta
         sigma = self.sigma
-        
+
         if frequency == "auto" and dt == 1/12:
             # On suppose que les paramètres sont annuels, on convertit en mensuels
             kappa, theta, sigma = self.annualize_to_monthly(kappa, theta, sigma)
-        
+
         inflation = np.zeros((nb_periods, nb_scenarios))
         inflation[0, :] = self.inflation_init
-        
+
         # Pré-calcul des facteurs (optimisation)
         drift_factor = kappa * dt
         diffusion_factor = sigma * np.sqrt(dt)
-        
+
         for t in range(1, nb_periods):
             # Discrétisation d'Euler-Maruyama
-            shock = np.random.randn(nb_scenarios)
+            shock = rng.standard_normal(nb_scenarios)
             inflation[t, :] = (
-                inflation[t-1, :] 
+                inflation[t-1, :]
                 + drift_factor * (theta - inflation[t-1, :])
                 + diffusion_factor * shock
             )
-        
-        
-        
+
         return inflation
     
     def to_cumulative_factor(self, inflation_monthly):

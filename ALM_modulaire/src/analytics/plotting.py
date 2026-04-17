@@ -35,6 +35,30 @@ def generer_facteur_actualisation(nb_periodes, inflation_factor=None):
         return (1 + settings.TAUX_INFLATION) ** (-annees)
 
 
+def _representative_sim_index(mat):
+    """
+    Retourne l'indice de la simulation la plus proche de la trajectoire
+    percentile-P50 au sens de la distance L2 (sim-médoïde).
+
+    Contexte ALM : un fan chart percentile-par-pas lisse toute la volatilité
+    (les percentiles sont calculés indépendamment à chaque date, ce qui donne
+    une courbe anormalement régulière, inexistante dans la réalité). Pour
+    afficher UN chemin unique représentatif des dynamiques de marché
+    (crises, rebonds, séquences de rendements), on sélectionne la sim réelle
+    dont la trajectoire s'écarte le moins, en L2, de la trajectoire médiane
+    percentile. C'est le scénario "représentatif" de la littérature ALM
+    (cf. scénarios CTE / LDI / Solvency II).
+
+    Args:
+        mat : ndarray (nb_pas, nb_sims) — matrice des trajectoires simulées.
+    Returns:
+        int — indice de la colonne la plus proche de la médiane.
+    """
+    traj_median = np.percentile(mat, 50, axis=1)
+    dist = np.sum((mat - traj_median[:, np.newaxis]) ** 2, axis=0)
+    return int(np.argmin(dist))
+
+
 # =============================================================================
 # GRAPHIQUES — PHASE D'ACCUMULATION
 # =============================================================================
@@ -49,18 +73,21 @@ def plot_capital(dates, mat_cap, courbe_investi, reel=False, inflation_factor=No
     
     mat_cap_plot = mat_cap * facteur[:, np.newaxis] if reel else mat_cap
     courbe_investi_plot = courbe_investi * facteur if reel else courbe_investi
-    
-    capitaux_finaux = mat_cap_plot[-1, :]
-    idx_sorted = np.argsort(capitaux_finaux)
-    idx_p5 = idx_sorted[int(len(capitaux_finaux) * 0.05)]
-    idx_p50 = idx_sorted[int(len(capitaux_finaux) * 0.50)]
-    idx_p95 = idx_sorted[int(len(capitaux_finaux) * 0.95)]
+
+    # Enveloppe P5-P95 pour l'incertitude (fan chart).
+    # Trajectoire centrale : scénario représentatif (sim-médoïde L2), qui
+    # préserve la volatilité réelle du marché contrairement à une courbe
+    # de percentiles lissés.
+    traj_p5 = np.percentile(mat_cap_plot, 5, axis=1)
+    traj_p95 = np.percentile(mat_cap_plot, 95, axis=1)
+    idx_rep = _representative_sim_index(mat_cap_plot)
+    traj_rep = mat_cap_plot[:, idx_rep]
 
     ax.plot(dates_plot, courbe_investi_plot, color='red', linestyle='--', linewidth=2, label='Versements cumulés')
-    ax.plot(dates_plot, mat_cap_plot[:, idx_p95], color='#2ca02c', linewidth=1.5, label='P95 (Optimiste)')
-    ax.plot(dates_plot, mat_cap_plot[:, idx_p50], color='black', linewidth=2.5, label='Médiane (P50)')
-    ax.plot(dates_plot, mat_cap_plot[:, idx_p5], color='gray', linewidth=1.5, label='P5 (Pessimiste)')
-    ax.fill_between(dates_plot, mat_cap_plot[:, idx_p5], mat_cap_plot[:, idx_p95], color='gray', alpha=0.15)
+    ax.plot(dates_plot, traj_p95, color='#2ca02c', linewidth=1.2, alpha=0.7, label='P95 (Optimiste)')
+    ax.plot(dates_plot, traj_rep, color='black', linewidth=2.5, label='Scénario représentatif')
+    ax.plot(dates_plot, traj_p5, color='gray', linewidth=1.2, alpha=0.7, label='P5 (Pessimiste)')
+    ax.fill_between(dates_plot, traj_p5, traj_p95, color='gray', alpha=0.15)
     
     titre = f"Évolution du Capital Accumulé - {settings.METHODE}"
     titre += " (Corrigé de l'inflation)" if reel else " (Nominal)"
@@ -137,17 +164,18 @@ def plot_zoom_crise_capital(dates, mat_cap, date_crise, reel=False, inflation_fa
         window_facteur = facteur[idx_start:idx_end]
         window_cap = window_cap * window_facteur[:, np.newaxis]
 
-    capitaux_finaux = mat_cap[-1, :]
-    idx_sorted = np.argsort(capitaux_finaux)
-    idx_p5 = idx_sorted[int(len(capitaux_finaux) * 0.05)]
-    idx_p50 = idx_sorted[int(len(capitaux_finaux) * 0.50)]
-    idx_p95 = idx_sorted[int(len(capitaux_finaux) * 0.95)]
+    # Enveloppe P5-P95 + scénario représentatif (sim-médoïde L2) pour
+    # conserver les vraies dynamiques de choc/rebond à l'écran.
+    traj_p5 = np.percentile(window_cap, 5, axis=1)
+    traj_p95 = np.percentile(window_cap, 95, axis=1)
+    idx_rep = _representative_sim_index(window_cap)
+    traj_rep = window_cap[:, idx_rep]
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(window_dates, window_cap[:, idx_p95], color='#2ca02c', linewidth=1.5, label='P95')
-    ax.plot(window_dates, window_cap[:, idx_p50], color='black', linewidth=2.5, label='Médiane (P50)')
-    ax.plot(window_dates, window_cap[:, idx_p5], color='gray', linewidth=1.5, label='P5')
-    ax.fill_between(window_dates, window_cap[:, idx_p5], window_cap[:, idx_p95], color='gray', alpha=0.15)
+    ax.plot(window_dates, traj_p95, color='#2ca02c', linewidth=1.2, alpha=0.7, label='P95')
+    ax.plot(window_dates, traj_rep, color='black', linewidth=2.5, label='Scénario représentatif')
+    ax.plot(window_dates, traj_p5, color='gray', linewidth=1.2, alpha=0.7, label='P5')
+    ax.fill_between(window_dates, traj_p5, traj_p95, color='gray', alpha=0.15)
 
     ax.axvline(dates_plot[idx_crise], color='red', linestyle='--', linewidth=1.5, label='Choc de marché')
 
@@ -170,17 +198,17 @@ def plot_zoom_crise_rendements(dates, mat_cap, date_crise):
 
     perf_cumul = (window_cap / window_cap[0, :]) * 100
 
-    capitaux_finaux = mat_cap[-1, :]
-    idx_sorted = np.argsort(capitaux_finaux)
-    idx_p5 = idx_sorted[int(len(capitaux_finaux) * 0.05)]
-    idx_p50 = idx_sorted[int(len(capitaux_finaux) * 0.50)]
-    idx_p95 = idx_sorted[int(len(capitaux_finaux) * 0.95)]
+    # Enveloppe P5-P95 + scénario représentatif (sim-médoïde L2).
+    traj_p5 = np.percentile(perf_cumul, 5, axis=1)
+    traj_p95 = np.percentile(perf_cumul, 95, axis=1)
+    idx_rep = _representative_sim_index(perf_cumul)
+    traj_rep = perf_cumul[:, idx_rep]
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(window_dates, perf_cumul[:, idx_p95], color='#2ca02c', linewidth=1.5, label='P95')
-    ax.plot(window_dates, perf_cumul[:, idx_p50], color='black', linewidth=2.5, label='Médiane (P50)')
-    ax.plot(window_dates, perf_cumul[:, idx_p5], color='gray', linewidth=1.5, label='P5')
-    ax.fill_between(window_dates, perf_cumul[:, idx_p5], perf_cumul[:, idx_p95], color='gray', alpha=0.15)
+    ax.plot(window_dates, traj_p95, color='#2ca02c', linewidth=1.2, alpha=0.7, label='P95')
+    ax.plot(window_dates, traj_rep, color='black', linewidth=2.5, label='Scénario représentatif')
+    ax.plot(window_dates, traj_p5, color='gray', linewidth=1.2, alpha=0.7, label='P5')
+    ax.fill_between(window_dates, traj_p5, traj_p95, color='gray', alpha=0.15)
 
     ax.axvline(dates_plot[idx_crise], color='red', linestyle='--', linewidth=1.5, label='Choc de marché')
     ax.axhline(100, color='black', linestyle=':', alpha=0.8)
@@ -218,17 +246,17 @@ def plot_retraite_capital(mat_cap_retraite, reel=False, inflation_factor=None):
     else:
         mat_cap_plot = mat_cap_retraite
     
-    capitaux_initiaux = mat_cap_plot[0, :]
-    idx_sorted = np.argsort(capitaux_initiaux)
-    idx_p5 = idx_sorted[int(len(capitaux_initiaux) * 0.05)]
-    idx_p50 = idx_sorted[int(len(capitaux_initiaux) * 0.50)]
-    idx_p95 = idx_sorted[int(len(capitaux_initiaux) * 0.95)]
-    
-    ax.plot(annees, mat_cap_plot[:, idx_p95], color='#2ca02c', linewidth=1.5, label='P95')
-    ax.plot(annees, mat_cap_plot[:, idx_p50], color='black', linewidth=2.5, label='Médiane (P50)')
-    ax.plot(annees, mat_cap_plot[:, idx_p5], color='gray', linewidth=1.5, label='P5')
-    ax.fill_between(annees, mat_cap_plot[:, idx_p5], mat_cap_plot[:, idx_p95], color='gray', alpha=0.15)
-    
+    # Enveloppe P5-P95 + scénario représentatif (sim-médoïde L2).
+    traj_p5 = np.percentile(mat_cap_plot, 5, axis=1)
+    traj_p95 = np.percentile(mat_cap_plot, 95, axis=1)
+    idx_rep = _representative_sim_index(mat_cap_plot)
+    traj_rep = mat_cap_plot[:, idx_rep]
+
+    ax.plot(annees, traj_p95, color='#2ca02c', linewidth=1.2, alpha=0.7, label='P95')
+    ax.plot(annees, traj_rep, color='black', linewidth=2.5, label='Scénario représentatif')
+    ax.plot(annees, traj_p5, color='gray', linewidth=1.2, alpha=0.7, label='P5')
+    ax.fill_between(annees, traj_p5, traj_p95, color='gray', alpha=0.15)
+
     titre = f"Évolution du Capital en Retraite ({duree} ans)"
     titre += " (Réel - € constants T0)" if reel else " (Nominal)"
     
@@ -260,15 +288,15 @@ def plot_taux_remplacement(taux_remp, reel=False, inflation_factor=None):
     else:
         taux_plot = taux_remp
         
-    taux_initiaux = taux_plot[0, :]
-    idx_sorted = np.argsort(taux_initiaux)
-    idx_p5 = idx_sorted[int(len(taux_initiaux) * 0.05)]
-    idx_p50 = idx_sorted[int(len(taux_initiaux) * 0.50)]
-    idx_p95 = idx_sorted[int(len(taux_initiaux) * 0.95)]
-    
-    ax.plot(annees, taux_plot[:, idx_p95] * 100, color='#2ca02c', linewidth=1.5, label='P95')
-    ax.plot(annees, taux_plot[:, idx_p50] * 100, color='black', linewidth=2.5, label='Médiane (P50)')
-    ax.plot(annees, taux_plot[:, idx_p5] * 100, color='gray', linewidth=1.5, label='P5')
+    # Enveloppe P5-P95 + scénario représentatif (sim-médoïde L2).
+    traj_p5 = np.percentile(taux_plot, 5, axis=1)
+    traj_p95 = np.percentile(taux_plot, 95, axis=1)
+    idx_rep = _representative_sim_index(taux_plot)
+    traj_rep = taux_plot[:, idx_rep]
+
+    ax.plot(annees, traj_p95 * 100, color='#2ca02c', linewidth=1.2, alpha=0.7, label='P95')
+    ax.plot(annees, traj_rep * 100, color='black', linewidth=2.5, label='Scénario représentatif')
+    ax.plot(annees, traj_p5 * 100, color='gray', linewidth=1.2, alpha=0.7, label='P5')
     
     ax.axhline(100, color='red', linestyle='--', linewidth=1, alpha=0.5, label='100% (Maintien pouvoir d\'achat)')
     
@@ -307,18 +335,24 @@ def plot_comparaison_capital(dates, resultats_dict, reel=False, inflation_factor
             mat_cap_plot = mat_cap * facteur[:, np.newaxis]
         else:
             mat_cap_plot = mat_cap
-            
-        capitaux_finaux = mat_cap_plot[-1, :]
-        idx_sorted = np.argsort(capitaux_finaux)
-        idx_p5 = idx_sorted[int(len(capitaux_finaux) * 0.05)]
-        idx_p50 = idx_sorted[int(len(capitaux_finaux) * 0.50)]
-        idx_p95 = idx_sorted[int(len(capitaux_finaux) * 0.95)]
-        
+
+        # Enveloppe P5-P95 pour l'incertitude, trajectoire centrale =
+        # scénario représentatif (sim-médoïde L2). On évite ainsi à la fois :
+        #   - le biais d'endpoint d'un tri sur valeur finale (les sims P50
+        #     se terminent mécaniquement au même fractile = convergence
+        #     artificielle des médianes),
+        #   - et le lissage excessif d'une courbe percentile-par-pas qui
+        #     efface toute la volatilité du marché.
+        traj_p5 = np.percentile(mat_cap_plot, 5, axis=1)
+        traj_p95 = np.percentile(mat_cap_plot, 95, axis=1)
+        idx_rep = _representative_sim_index(mat_cap_plot)
+        traj_rep = mat_cap_plot[:, idx_rep]
+
         c = couleurs.get(strat, "black")
-        
-        ax.plot(dates_plot, mat_cap_plot[:, idx_p50], color=c, linewidth=2.5, label=f'{strat} (Médiane)')
-        ax.plot(dates_plot, mat_cap_plot[:, idx_p5], color=c, linewidth=1.5, linestyle='--', label=f'{strat} (P5)')
-        ax.fill_between(dates_plot, mat_cap_plot[:, idx_p5], mat_cap_plot[:, idx_p95], color=c, alpha=0.1)
+
+        ax.plot(dates_plot, traj_rep, color=c, linewidth=2.5, label=f'{strat} (Scénario représentatif)')
+        ax.plot(dates_plot, traj_p5, color=c, linewidth=1.2, linestyle='--', alpha=0.7, label=f'{strat} (P5)')
+        ax.fill_between(dates_plot, traj_p5, traj_p95, color=c, alpha=0.1)
         
     titre = "Comparaison Stratégique : Évolution du Capital Accumulé"
     titre += " (Réel - € constants)" if reel else " (Nominal)"

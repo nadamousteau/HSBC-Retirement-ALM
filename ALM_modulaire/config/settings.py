@@ -4,8 +4,20 @@ from pathlib import Path
 # 0. STRATÉGIE GLOBALE ET BENCHMARKING
 # =============================================================================
 MODE_COMPARAISON = True
-STRATEGIES_A_COMPARER = ["GBI", "FALEH", "FIXED_MIX", "TARGET_DATE"]  
+STRATEGIES_A_COMPARER = ["GBI", "FALEH", "FIXED_MIX", "TARGET_DATE"]
 METHODE_DEFAUT = "GBI"
+
+# =============================================================================
+# 0b. GRAINE ALÉATOIRE MASTER (SeedSequence → bundle de Generator)
+# =============================================================================
+# Unique point de contrôle pour la reproductibilité. Les seeds spécifiques
+# (INFLATION_SEED, GBI_SEED, FALEH_SEED, DECUMULATION_SEED — cf. plus bas)
+# sont dépréciés : ils restent définis pour rétrocompatibilité des appels
+# externes éventuels, mais ne sont plus utilisés par le pipeline.
+#
+#   GLOBAL_SEED = 42    → run reproductible
+#   GLOBAL_SEED = None  → entropie OS, non-reproductible
+GLOBAL_SEED = 42
 
 # =============================================================================
 # 1. PATHS & DATA CONFIGURATION
@@ -50,7 +62,7 @@ INFLATION_STOCHASTIQUE = True  # Activer le modèle Vasicek pour l'inflation
 INFLATION_KAPPA = 0.15         # Vitesse de retour à la moyenne (demi-vie ~4.6 ans)
 INFLATION_THETA = 0.023        # Cible d'inflation long terme (2.3%)
 INFLATION_SIGMA = 0.011        # Volatilité de l'inflation (~1.1% annualisée)
-INFLATION_SEED = 42            # Graine aléatoire pour reproductibilité
+INFLATION_SEED = 42            # deprecated — cf. GLOBAL_SEED (rng_bundle["inflation_accum"])
 
 # =============================================================================
 # 6. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
@@ -58,13 +70,19 @@ INFLATION_SEED = 42            # Graine aléatoire pour reproductibilité
 
 DATE_RETRAITE_GBI = "2041-12-31"  # DATE_DEBUT_T0 + NB_ANNEES_ACCUMULATION
 FLOOR_PERCENT_GBI = 0.80  # Plancher de sécurité (80% de la richesse cible)
-GBI_SEED = 42  # Graine aléatoire pour NS-VAR(1)
+GBI_SEED = 42  # deprecated — cf. GLOBAL_SEED (rng_bundle["gbi_ns"])
 
 # =============================================================================
 # 7. PARAMÈTRES DÉCUMULATION (Phase de retraite)
 # =============================================================================
 
 SIMULER_DECUMULATION = True
+
+# Si True  : exécute une décumulation par stratégie d'accumulation, chacune
+#             partant de son propre capital final (T5).
+# Si False : comportement T1 — unique décumulation, partant du capital final
+#             de la dernière stratégie d'accumulation du dict.
+DECUMULATION_PAR_STRATEGIE_ACCUM = True
 
 # Horizon de la retraite
 NB_ANNEES_DECUMULATION = 25          # Durée de la simulation post-retraite
@@ -75,15 +93,24 @@ TAUX_DISTRIBUTION_SURPLUS = 0.30     # Part du surplus distribuée (0 = survie m
 TAUX_ACTUALISATION_PLANCHER = 0.02   # Taux pour actualiser les retraits futurs (prudence du plancher)
 
 # Stratégie d'investissement en retraite (peut différer de l'accumulation)
-# Choix parmi : "FIXED_MIX", "TARGET_DATE", "GBI", "FALEH"
+# Choix parmi : "FIXED_MIX", "TARGET_DATE", "FALEH", "ANNUITY"
+# (GBI exclu : le Goal Price Index n'a plus de sens sans date future)
 STRATEGIE_DECUMULATION = "TARGET_DATE"
+
+# =============================================================================
+# 7b. PARAMÈTRES RENTE VIAGÈRE (STRATEGIE_DECUMULATION = "ANNUITY")
+# =============================================================================
+# Table de mortalité : TH 00-02 (réglementaire française, hommes 2000-2002).
+# Voir src/liabilities/mortality.py — valeurs embarquées, approximation.
+ANNUITY_TECHNICAL_RATE = 0.01      # Taux technique annuel (0 à 60% * TME en FR)
+ANNUITY_INSURER_LOADING = 0.05     # Chargement assureur (frais + marge prudentielle)
 
 # Profil d'investissement en retraite (peut différer de l'accumulation)
 # Choix parmi : "PRUDENT", "MODERE", "EQUILIBRE", "DYNAMIQUE", "AGRESSIF"
 PROFIL_DECUMULATION = "PRUDENT"
 
 # Seed pour les rendements de la phase retraite (continuité avec l'accumulation)
-DECUMULATION_SEED = None             # None = prolongation stochastique des trajectoires
+DECUMULATION_SEED = 42               # deprecated — cf. GLOBAL_SEED (rng_bundle["equity_bonds_decum"])
 
 # =============================================================================
 # 11. PARAMÈTRES SIMULATION
@@ -92,6 +119,10 @@ DECUMULATION_SEED = None             # None = prolongation stochastique des traj
 NB_SIMULATIONS = 1000
 NB_PAS_PAR_AN = 12
 NB_PERIODES_TOTAL = NB_ANNEES_ACCUMULATION * NB_PAS_PAR_AN
+# Horizon total du pipeline (accumulation + décumulation) en mois. Les
+# trajectoires économiques sont générées en une seule passe sur cette durée,
+# puis slicées pour chaque phase (cf. Tâche 3).
+NB_MOIS_TOTAL_PIPELINE = (NB_ANNEES_ACCUMULATION + NB_ANNEES_DECUMULATION) * NB_PAS_PAR_AN
 
 # =============================================================================
 # 12. PARAMÈTRES APPORT (Contributions dynamiques)
@@ -131,7 +162,7 @@ PARAMS_CRISE_DETAIL = {
 FALEH_NB_TREE_STAGES = 10
 FALEH_PENALTY_RUINE = 50
 FALEH_TARGET_WEALTH = None  # Calculé automatiquement si None
-FALEH_SEED = 42  # Graine aléatoire pour les scénarios FALEH
+FALEH_SEED = 42  # deprecated — cf. GLOBAL_SEED (rng_bundle["faleh_gse"])
 FALEH_MAX_BRANCHES = 5  # Nombre maximal de branches par nœud dans l'arbre
 
 # =============================================================================
@@ -198,7 +229,7 @@ PROFILS = {
 # Accumulation
 PLOT_CAPITAL = False
 PLOT_SALAIRE = False
-PLOT_APPORTS = False
+PLOT_APPORTS = True
 PLOT_CAPITAL_REEL = False
 PLOT_SALAIRE_REEL = False
 PLOT_APPORTS_REEL = False
@@ -214,11 +245,11 @@ PRINT_METRIQUES_RISQUE = True
 
 # Comparaison Accumulation
 PLOT_COMPARAISON_CAPITAL = False
-PLOT_COMPARAISON_CAPITAL_REEL = False
-PRINT_SYNTHESE_CAPITAL_RETRAITE = False
+PLOT_COMPARAISON_CAPITAL_REEL = True
+PRINT_SYNTHESE_CAPITAL_RETRAITE = True
 
 # Décumulation
-PLOT_DECUMULATION_CAPITAL = True          # Évolution du capital restant en retraite
+PLOT_DECUMULATION_CAPITAL = False         # Évolution du capital restant en retraite
 PLOT_DECUMULATION_CAPITAL_REEL = False    # Idem en euros constants
-PLOT_DECUMULATION_RETRAITS = True         # Décomposition plancher / variable des retraits
-PRINT_DECUMULATION_METRICS = True         # Rapport console complet
+PLOT_DECUMULATION_RETRAITS = False         # Décomposition plancher / variable des retraits
+PRINT_DECUMULATION_METRICS = False         # Rapport console complet

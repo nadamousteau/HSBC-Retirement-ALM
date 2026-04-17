@@ -2,25 +2,28 @@ import numpy as np
 import pandas as pd
 from config import settings
 
-def ajouter_chocs_merton(rendements_eq, rendements_bd, nb_periodes, nb_sims):
+def ajouter_chocs_merton(rendements_eq, rendements_bd, nb_periodes, nb_sims, rng=None):
     """
     Jump-Diffusion de Merton (Target Date)
     Application probabiliste d'un saut (crise) sur les rendements.
     Utilise les paramètres définis dans settings (LAMBDA_CRISE, etc.).
     """
+    if rng is None:
+        rng = np.random.default_rng()
+
     lambda_mensuelle = settings.LAMBDA_CRISE / 12
-    
+
     for t in range(nb_periodes):
         # Tirage binomial : y a-t-il une crise ce mois ?
-        crise = np.random.binomial(1, lambda_mensuelle, nb_sims)
-        
+        crise = rng.binomial(1, lambda_mensuelle, nb_sims)
+
         # Appliquer choc uniquement si crise=1
-        choc_eq = crise * np.random.normal(settings.SEVERITE_EQ_MOYENNE, settings.SEVERITE_EQ_SIGMA, nb_sims)
-        choc_bd = crise * np.random.normal(settings.SEVERITE_BD_MOYENNE, settings.SEVERITE_BD_SIGMA, nb_sims)
+        choc_eq = crise * rng.normal(settings.SEVERITE_EQ_MOYENNE, settings.SEVERITE_EQ_SIGMA, nb_sims)
+        choc_bd = crise * rng.normal(settings.SEVERITE_BD_MOYENNE, settings.SEVERITE_BD_SIGMA, nb_sims)
 
         rendements_eq[t] += choc_eq
         rendements_bd[t] += choc_bd
-    
+
     return rendements_eq, rendements_bd
 
 def injecter_crise_localisee(r_eq, r_bd, dates_list, date_depart, params):
