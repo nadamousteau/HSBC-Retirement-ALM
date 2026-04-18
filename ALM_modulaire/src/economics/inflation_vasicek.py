@@ -7,15 +7,15 @@ Processus Vasicek pour l'inflation :
     dI(t) = κ(θ - I(t))dt + σ dW(t)
     
 Où :
-    I(t)    : taux d'inflation instantané
+    I(t)    : taux d'inflation instantané (annualisé)
     κ       : vitesse de retour à la moyenne (mean reversion speed)
-    θ       : inflation cible de long terme
-    σ       : volatilité
+    θ       : inflation cible de long terme (annualisée)
+    σ       : volatilité (annualisée)
     dW(t)   : mouvement brownien standard
 """
 
 import numpy as np
-
+import warnings
 
 class VasicekInflation:
     """
@@ -49,35 +49,35 @@ class VasicekInflation:
             dt           : Pas de temps en années (1/12 pour mensuel)
             rng          : np.random.Generator ou None (entropie OS si None)
             frequency    : "auto" (défaut) ou "annual" ou "monthly"
-                          Si "annual", convertit automatiquement les params annuels → mensuels
+                           NOTE : Ce paramètre est conservé pour compatibilité mais 
+                           ignoré pour le calcul stochastique afin d'éviter les erreurs 
+                           d'échelle sur sigma et theta.
 
         Returns:
-            np.array : (nb_periods, nb_scenarios) - taux d'inflation mensuels
+            np.array : (nb_periods, nb_scenarios) - taux d'inflation annualisés simulés
 
-        IMPORTANT : Si vous utilisez des paramètres annualisés (ex: calibration_default()),
-                   assurez-vous que frequency="auto" ou "annual".
+        IMPORTANT : La simulation conserve les paramètres annuels. L'ajustement 
+                    temporel est géré par dt et sqrt(dt) dans le schéma d'Euler.
         """
         if rng is None:
             rng = np.random.default_rng()
 
-        # Adapter les paramètres selon la fréquence
+        # Correction : On utilise directement les attributs de classe (annuels)
+        # pour garantir la cohérence de l'EDS.
         kappa = self.kappa
         theta = self.theta
         sigma = self.sigma
 
-        if frequency == "auto" and dt == 1/12:
-            # On suppose que les paramètres sont annuels, on convertit en mensuels
-            kappa, theta, sigma = self.annualize_to_monthly(kappa, theta, sigma)
-
+        # La variable d'état 'inflation' représente le taux annualisé à l'instant t
         inflation = np.zeros((nb_periods, nb_scenarios))
         inflation[0, :] = self.inflation_init
 
-        # Pré-calcul des facteurs (optimisation)
+        # Pré-calcul des facteurs (optimisation numérique)
         drift_factor = kappa * dt
         diffusion_factor = sigma * np.sqrt(dt)
 
         for t in range(1, nb_periods):
-            # Discrétisation d'Euler-Maruyama
+            # Discrétisation d'Euler-Maruyama : dI = kappa(theta - I)dt + sigma*sqrt(dt)*Z
             shock = rng.standard_normal(nb_scenarios)
             inflation[t, :] = (
                 inflation[t-1, :]
@@ -87,33 +87,34 @@ class VasicekInflation:
 
         return inflation
     
-    def to_cumulative_factor(self, inflation_monthly):
+    def to_cumulative_factor(self, inflation_annualized, dt=1/12):
         """
-        Convertit des taux d'inflation mensuels en facteurs cumulatifs.
+        Convertit des taux d'inflation annualisés en facteurs cumulatifs.
     
         Utile pour déflation a posteriori : capital_reel = capital_nominal / factor(T)
     
         Args:
-            inflation_monthly : np.array (nb_periods, nb_scenarios) - taux mensuels
+            inflation_annualized : np.array (nb_periods, nb_scenarios) - taux annuels
+            dt                   : Pas de temps (défaut 1/12 pour passer en mensuel)
         Returns:
             np.array (nb_periods, nb_scenarios) — facteur cumulatif mois par mois
         """
-        return np.cumprod(1 + inflation_monthly, axis=0)
+        return np.cumprod(1 + inflation_annualized * dt, axis=0)
     
-    def to_indexation_factor(self, inflation_monthly):
+    def to_indexation_factor(self, inflation_annualized, dt=1/12):
         """
-        Convertit des taux d'inflation mensuels en facteurs d'indexation des revenus.
+        Convertit des taux d'inflation annualisés en facteurs d'indexation des revenus.
         
         Utile pour indexation des salaires/apports : salaire(t) = salaire_init * factor(t)
         
         Args:
-            inflation_monthly : np.array (nb_periods, nb_scenarios) - taux mensuels
+            inflation_annualized : np.array (nb_periods, nb_scenarios) - taux annuels
+            dt                   : Pas de temps
             
         Returns:
             np.array : (nb_periods, nb_scenarios) - facteurs cumulatifs d'indexation
         """
-        # Produit cumulatif des (1 + taux mensuel)
-        return np.cumprod(1 + inflation_monthly, axis=0)
+        return np.cumprod(1 + inflation_annualized * dt, axis=0)
     
     @staticmethod
     def calibration_default():
@@ -125,8 +126,7 @@ class VasicekInflation:
         - Écart-type : ~1.1%
         - Autocorrélation (1 an) : ~0.75
         
-        IMPORTANT : Les paramètres retournés ici sont ANNUALISÉS et doivent être
-        convertis avant utilisation avec une fréquence différente (ex: mensuelle).
+        IMPORTANT : Les paramètres retournés ici sont ANNUALISÉS.
         
         Returns:
             dict : {'kappa': float, 'theta': float, 'sigma': float} (ANNUELS)
@@ -142,6 +142,9 @@ class VasicekInflation:
         """
         Convertit les paramètres Vasicek d'une fréquence annuelle à mensuelle.
         
+        /!\ ATTENTION : Cette fonction est maintenue pour compatibilité externe. 
+        Elle ne doit pas être utilisée pour modifier les paramètres avant simulate().
+        
         Args:
             kappa_annual : float - vitesse annuelle
             theta_annual : float - cible annuelle
@@ -150,15 +153,14 @@ class VasicekInflation:
         Returns:
             tuple : (kappa_monthly, theta_monthly, sigma_monthly)
         """
-        # kappa est un paramètre continu (unité : an⁻¹). Pas de conversion nécessaire
-        # car la discrétisation d'Euler applique kappa * dt, et c'est dt = 1/12 qui
-        # assure l'ajustement d'échelle temporelle.
+        warnings.warn(
+            "annualize_to_monthly ne doit être utilisée que pour l'affichage ou des "
+            "calculs statiques, pas pour la simulation stochastique.", 
+            DeprecationWarning
+        )
+        
         kappa_monthly = kappa_annual
-        
-        # theta doit être divisé par 12 (moyenne mensuelle)
         theta_monthly = theta_annual / 12.0
-        
-        # sigma doit être divisé par sqrt(12) pour la volatilité mensuelle
         sigma_monthly = sigma_annual / np.sqrt(12)
         
         return kappa_monthly, theta_monthly, sigma_monthly
