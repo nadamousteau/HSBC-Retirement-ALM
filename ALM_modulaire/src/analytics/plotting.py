@@ -121,19 +121,27 @@ def plot_salaire(dates, hist_salaire, strategy_name, reel=False, inflation_facto
 
 
 def plot_apports(dates, hist_apport, strategy_name, reel=False, inflation_factor=None):
-    """Génère le graphique de l'évolution des apports, en nominal ou réel."""
+    """Génère le graphique de l'évolution des apports, en nominal ou réel, sans le saut initial à zéro."""
     fig, ax = plt.subplots(figsize=(10, 6))
     nb_periodes = len(hist_apport)
     facteur = generer_facteur_actualisation(nb_periodes, inflation_factor=inflation_factor)
 
-    apport_plot = hist_apport * facteur if reel else hist_apport
+    # Application du facteur d'inflation (réel vs nominal)
+    apport_total = hist_apport * facteur if reel else hist_apport
 
-    ax.plot(dates, apport_plot, color='darkred', linewidth=2, label='Apport mensuel')
+    # Correction : On ignore le premier point s'il est égal à 0 pour éviter le saut vertical
+    mask = apport_total > 0
+    if not np.any(mask): # Sécurité si tout est à zéro
+        mask = np.ones(len(apport_total), dtype=bool)
+
+    # On plot uniquement les données valides
+    ax.plot(dates[mask], apport_total[mask], color='darkred', linewidth=2, label='Apport mensuel')
 
     titre = f"Évolution des Apports Mensuels - {strategy_name}"
-    titre += " (Corrigés de l'inflation)" if reel else " (Nominaux)"
+    titre += " (Réels)" if reel else " (Nominaux)"
+    
     ax.set_title(titre)
-    ax.set_ylabel("Apport Constant (€)" if reel else "Apport (€)")
+    ax.set_ylabel("Apport (€)")
     ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, p: format(int(x), ',').replace(',', ' ')))
     ax.legend(loc='upper left')
     plt.tight_layout()
