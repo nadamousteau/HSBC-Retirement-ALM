@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python main.py)",
+      "Bash(echo \"EXIT=$?\")",
+      "Read(//tmp/**)",
+      "Bash(PYTHONIOENCODING=utf-8 python main.py)",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"from src.analytics import plotting; print\\('import OK'\\); print\\('helper:', plotting._representative_sim_index.__name__\\)\")",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(PYTHONIOENCODING=utf-8 MPLBACKEND=Agg python main.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python -m pytest tests/test_inflation_bonds_corr.py -v)",
+      "Bash(PYTHONIOENCODING=utf-8 python -m pip install pytest)",
+      "Bash(python -m pytest tests/test_retirement_liability.py -v)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(python -X utf8 main.py)"
+    ]
+  }
+}

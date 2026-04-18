@@ -28,12 +28,18 @@ from config import settings
 # =============================================================================
 
 def run_decumulation(strategy, r_eq, r_bd, capital_initial_par_sim,
-                     inflation, dernier_salaire_mensuel=None):
+                     inflation, liability, dernier_salaire_mensuel=None):
     """
     Exécute la simulation Monte Carlo de décumulation.
 
-    Tous les paramètres du client (retrait cible, horizon, taux de distribution)
-    sont lus depuis settings.py pour cohérence avec l'architecture existante.
+    Le passif client `liability` (RetirementLiability) porte désormais le
+    revenu mensuel cible et le taux d'actualisation du plancher. Les
+    paramètres restants (horizon, distribution surplus) sont toujours
+    lus depuis settings.py.
+
+    Vague 2 / Tâche C — l'horizon de simulation reste piloté par
+    `settings.NB_ANNEES_DECUMULATION` ; `validate_settings()` vérifie
+    qu'il couvre `liability.expected_duration_years() + marge`.
 
     Args:
         strategy                : Objet stratégie (get_allocation, should_rebalance)
@@ -43,16 +49,23 @@ def run_decumulation(strategy, r_eq, r_bd, capital_initial_par_sim,
         capital_initial_par_sim : ndarray (nb_sims,) — capital de départ par scénario
                                   (= capital final de l'accumulation, varie par sim)
         inflation               : ndarray (nb_steps, nb_sims) — taux d'inflation mensuels
+        liability               : RetirementLiability — passif client.
+                                  Fournit `target_income_monthly`,
+                                  `income_mode`, `discount_rate`.
         dernier_salaire_mensuel : float ou None — pour le taux de remplacement
 
     Returns:
         dict avec matrices de simulation et métriques
     """
-    # ── Lecture des paramètres depuis settings ────────────────────────────
+    # ── Lecture des paramètres depuis settings + liability ────────────────
     horizon_annees = settings.NB_ANNEES_DECUMULATION
-    retrait_mensuel_reel = settings.RETRAIT_MENSUEL_REEL
     taux_distribution = settings.TAUX_DISTRIBUTION_SURPLUS
-    taux_actu_plancher = settings.TAUX_ACTUALISATION_PLANCHER
+
+    # Retrait plancher : monetisé au moment de la liquidation (NOMINAL).
+    # En mode REAL, on capitalise par (1+inflation_expected)^accum ; en
+    # mode NOMINAL, on prend directement la cible saisie.
+    retrait_mensuel_plancher = liability.monthly_income_nominal_at_retirement()
+    taux_actu_plancher = liability.discount_rate
 
     nb_steps = horizon_annees * 12
     nb_sims = len(capital_initial_par_sim)
@@ -96,7 +109,7 @@ def run_decumulation(strategy, r_eq, r_bd, capital_initial_par_sim,
         inflation_factor[k + 1, :] = inflation_factor[k, :] * (1 + inflation[k, :])
 
         # ── 1. Retrait plancher indexé ───────────────────────────────────
-        retrait_plancher = retrait_mensuel_reel * inflation_factor[k, :]
+        retrait_plancher = retrait_mensuel_plancher * inflation_factor[k, :]
         retrait_plancher = np.minimum(retrait_plancher, np.maximum(W, 0.0))
 
         # ── 2. Richesse plancher (VA des retraits futurs) ────────────────
@@ -142,7 +155,7 @@ def run_decumulation(strategy, r_eq, r_bd, capital_initial_par_sim,
     metrics = _compute_metrics(
         mat_capital, mat_retrait_total, mat_retrait_plancher,
         mat_retrait_variable, inflation_factor, mois_ruine,
-        horizon_annees, retrait_mensuel_reel, dernier_salaire_mensuel, nb_sims,
+        horizon_annees, retrait_mensuel_plancher, dernier_salaire_mensuel, nb_sims,
     )
 
     return {
@@ -164,7 +177,7 @@ def run_decumulation(strategy, r_eq, r_bd, capital_initial_par_sim,
 
 def _compute_metrics(mat_capital, mat_retrait_total, mat_retrait_plancher,
                      mat_retrait_variable, inflation_factor, mois_ruine,
-                     horizon_annees, retrait_mensuel_reel,
+                     horizon_annees, retrait_mensuel_plancher,
                      dernier_salaire_mensuel, nb_sims):
     """Calcule toutes les métriques de décumulation."""
     nb_steps = horizon_annees * 12
@@ -227,7 +240,7 @@ def _compute_metrics(mat_capital, mat_retrait_total, mat_retrait_plancher,
         "taux_remplacement_p50": taux_remplacement_p50,
         "taux_remplacement_reel_p50": taux_remplacement_reel_p50,
         "part_variable_p50": part_variable_p50,
-        "retrait_plancher_cible": retrait_mensuel_reel,
+        "retrait_plancher_cible": retrait_mensuel_plancher,
     }
 
 

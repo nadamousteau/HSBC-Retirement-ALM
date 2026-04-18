@@ -4,9 +4,9 @@ PIPELINE — PHASE D'ACCUMULATION
 Orchestration de la boucle Monte Carlo pour chaque stratégie d'accumulation.
 
 Extrait de main.py (sections 3 / 4 / 4.5) pour rendre main() purement
-orchestrateur. Aucun changement de logique : les prints, l'ordre d'appel aux
-moteurs et les mutations globales (settings.METHODE) sont préservés à
-l'identique pour garantir la bit-identité des sorties.
+orchestrateur. Le nom de la stratégie courante est porté localement par la
+variable `strat_actuelle` ; aucun module aval ne dépend d'une mutation
+globale de `settings`.
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ from src import engine, strategies, analytics
 
 def run_accumulation(strategies_run, economic_scenarios, market_params,
                      gpi, gbi_tensor, dates, idx_split, inflation_tensor,
-                     rng_bundle=None):
+                     rng_bundle=None, liability=None):
     """
     Exécute la boucle d'accumulation pour chaque stratégie de la liste.
 
@@ -37,6 +37,9 @@ def run_accumulation(strategies_run, economic_scenarios, market_params,
         inflation_tensor   : ndarray (nb_periodes, nb_sims) — taux mensuels
         rng_bundle         : dict produit par `make_rng_bundle()` — fournit
                              les Generator dédiés (notamment "faleh_gse").
+        liability          : `RetirementLiability` — passif client. Injecté
+                             dans FalehStrategy pour fixer target_wealth
+                             (Vague 2 / Tâche C).
 
     Returns:
         dict {strat_name: contexte_strat} où contexte_strat contient
@@ -50,13 +53,11 @@ def run_accumulation(strategies_run, economic_scenarios, market_params,
     contextes_par_strat = {}
 
     for strat_actuelle in strategies_run:
-        # Écrasement local pour garantir l'aiguillage dans les modules sous-jacents
-        settings.METHODE = strat_actuelle
-
         # ── Dispatch vers le bon moteur ──────────────────────────────────────
         if strat_actuelle == "GBI":
             mat_cap, courbe_investi, hist_apport, hist_dd, hist_salaire, _, inflation_factor = engine.run_simulation_gbi(
-                gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=inflation_tensor
+                gpi, gbi_tensor, r_eq, r_bd, dates, idx_split,
+                inflation=inflation_tensor, liability=liability,
             )
         else:
             if strat_actuelle == "TARGET_DATE":
@@ -66,7 +67,10 @@ def run_accumulation(strategies_run, economic_scenarios, market_params,
             elif strat_actuelle == "FALEH":
                 from src.strategies.faleh_strategy import FalehStrategy
                 rng_faleh = rng_bundle["faleh_gse"] if rng_bundle is not None else None
-                strategy = FalehStrategy(mu_e, sigma_e, mu_b, sigma_b, corr_eb, rng=rng_faleh)
+                strategy = FalehStrategy(
+                    mu_e, sigma_e, mu_b, sigma_b, corr_eb,
+                    liability=liability, rng=rng_faleh,
+                )
                 strategy.initialize_tree(dates)
             else:
                 raise NotImplementedError(

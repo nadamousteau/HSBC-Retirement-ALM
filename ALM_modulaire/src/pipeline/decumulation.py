@@ -21,7 +21,7 @@ from src.engine.decumulation_core import run_decumulation, print_decumulation_re
 from src.analytics import plotting
 
 
-def _build_decumulation_strategy(market_params, dates_decum, rng_bundle):
+def _build_decumulation_strategy(market_params, dates_decum, rng_bundle, liability):
     """
     Construit la stratégie de décumulation demandée par `settings`.
 
@@ -33,6 +33,9 @@ def _build_decumulation_strategy(market_params, dates_decum, rng_bundle):
     Cas `ANNUITY` : retourne `(None, "ANNUITY")`. La rente viagère n'utilise
     pas de stratégie d'allocation — son traitement est court-circuité en
     amont par `_run_one_decumulation`.
+
+    `liability` est injecté dans FalehStrategy (Vague 2 / Tâche C) pour
+    fixer target_wealth. Les autres stratégies l'ignorent.
     """
     mu_e, sigma_e, mu_b, sigma_b, corr_eb = market_params
     profil_decum = settings.PROFILS[settings.PROFIL_DECUMULATION]
@@ -49,7 +52,10 @@ def _build_decumulation_strategy(market_params, dates_decum, rng_bundle):
     if strat_decum_name == "FALEH":
         from src.strategies.faleh_strategy import FalehStrategy
         rng_faleh = rng_bundle["faleh_gse"] if rng_bundle is not None else None
-        strat = FalehStrategy(mu_e, sigma_e, mu_b, sigma_b, corr_eb, rng=rng_faleh)
+        strat = FalehStrategy(
+            mu_e, sigma_e, mu_b, sigma_b, corr_eb,
+            liability=liability, rng=rng_faleh,
+        )
         strat.initialize_tree(dates_decum)
         return strat, strat_decum_name
 
@@ -63,7 +69,8 @@ def _build_decumulation_strategy(market_params, dates_decum, rng_bundle):
 
 
 def _run_one_decumulation(strategy_decum, strat_decum_name, strat_accum_name,
-                          ctx_accum, r_eq_decum, r_bd_decum, inflation_decum):
+                          ctx_accum, r_eq_decum, r_bd_decum, inflation_decum,
+                          liability):
     """
     Exécute une décumulation à partir d'un contexte d'accumulation donné,
     puis déclenche reporting console et plots selon les flags settings.
@@ -71,6 +78,9 @@ def _run_one_decumulation(strategy_decum, strat_decum_name, strat_accum_name,
     Dispatch :
         - ANNUITY → `run_annuity_decumulation` (pas de marché, rente viagère)
         - autres  → `run_decumulation` (stratégie d'allocation + retraits)
+
+    `liability` (Vague 2 / Tâche C) est passé à `run_decumulation` qui en
+    extrait le retrait plancher et le taux d'actualisation.
     """
     capital_depart = ctx_accum["mat_cap"][-1, :]
     hist_salaire = ctx_accum["hist_salaire"]
@@ -96,6 +106,7 @@ def _run_one_decumulation(strategy_decum, strat_decum_name, strat_accum_name,
             r_bd=r_bd_decum,
             capital_initial_par_sim=capital_depart,
             inflation=inflation_decum,
+            liability=liability,
             dernier_salaire_mensuel=dernier_salaire,
         )
 
@@ -105,14 +116,15 @@ def _run_one_decumulation(strategy_decum, strat_decum_name, strat_accum_name,
             strategy_name=f"{strat_accum_name} → {strat_decum_name} / Profil {settings.PROFIL_DECUMULATION}"
         )
 
+    plot_strategy_name = f"{strat_accum_name} → {strat_decum_name}"
     if getattr(settings, 'PLOT_DECUMULATION_CAPITAL', False):
         plotting.plot_retraite_capital(
-            result["mat_capital"], reel=False,
+            result["mat_capital"], strategy_name=plot_strategy_name, reel=False,
             inflation_factor=result["inflation_factor"]
         )
     if getattr(settings, 'PLOT_DECUMULATION_CAPITAL_REEL', False):
         plotting.plot_retraite_capital(
-            result["mat_capital"], reel=True,
+            result["mat_capital"], strategy_name=plot_strategy_name, reel=True,
             inflation_factor=result["inflation_factor"]
         )
 
@@ -123,7 +135,7 @@ def _run_one_decumulation(strategy_decum, strat_decum_name, strat_accum_name,
 
 def run_decumulation_phase(contextes_accum, economic_scenarios_decum,
                             inflation_decum, dates_decum, market_params,
-                            rng_bundle=None):
+                            rng_bundle=None, liability=None):
     """
     Exécute la phase de décumulation.
 
@@ -143,6 +155,11 @@ def run_decumulation_phase(contextes_accum, economic_scenarios_decum,
                                    corr_eb) — nécessaire à Faleh.
         rng_bundle               : dict produit par `make_rng_bundle()` —
                                    fournit le Generator Faleh.
+        liability                : `RetirementLiability` — passif client
+                                   (Vague 2 / Tâche C). Injecté dans
+                                   FalehStrategy ET dans `run_decumulation`
+                                   pour fixer retrait plancher et taux
+                                   d'actualisation.
 
     Returns:
         dict {strat_accum_name: result_decum} — un résultat par stratégie
@@ -151,17 +168,23 @@ def run_decumulation_phase(contextes_accum, economic_scenarios_decum,
     """
     if not contextes_accum:
         return None
+    if liability is None:
+        raise ValueError(
+            "run_decumulation_phase : argument `liability` requis "
+            "(cf. src/liabilities/retirement_objective.py)."
+        )
 
     r_eq_decum, r_bd_decum = economic_scenarios_decum
 
     strategy_decum, strat_decum_name = _build_decumulation_strategy(
-        market_params, dates_decum, rng_bundle
+        market_params, dates_decum, rng_bundle, liability
     )
 
     print(f"DÉCUMULATION : Stratégie={strat_decum_name}, "
           f"Profil={settings.PROFIL_DECUMULATION}, "
-          f"Retrait={settings.RETRAIT_MENSUEL_REEL}€/mois, "
-          f"Horizon={settings.NB_ANNEES_DECUMULATION}ans, "
+          f"Retrait={liability.target_income_monthly:.0f}€/mois ({liability.income_mode}), "
+          f"Horizon={settings.NB_ANNEES_DECUMULATION}ans "
+          f"(passif={liability.expected_duration_years():.1f}ans, mode={liability.horizon_mode}), "
           f"Distribution surplus={settings.TAUX_DISTRIBUTION_SURPLUS*100:.0f}%")
 
     par_strategie = getattr(settings, 'DECUMULATION_PAR_STRATEGIE_ACCUM', False)
@@ -172,7 +195,7 @@ def run_decumulation_phase(contextes_accum, economic_scenarios_decum,
             print(f"\n── Décumulation à partir de l'accumulation : {strat_accum_name} ──")
             results[strat_accum_name] = _run_one_decumulation(
                 strategy_decum, strat_decum_name, strat_accum_name, ctx,
-                r_eq_decum, r_bd_decum, inflation_decum,
+                r_eq_decum, r_bd_decum, inflation_decum, liability,
             )
         return results
 
@@ -181,6 +204,6 @@ def run_decumulation_phase(contextes_accum, economic_scenarios_decum,
     return {
         last_strat_name: _run_one_decumulation(
             strategy_decum, strat_decum_name, last_strat_name, last_ctx,
-            r_eq_decum, r_bd_decum, inflation_decum,
+            r_eq_decum, r_bd_decum, inflation_decum, liability,
         )
     }

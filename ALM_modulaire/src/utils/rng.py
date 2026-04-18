@@ -27,11 +27,17 @@ import numpy as np
 # Note : depuis la Tâche 3, les trajectoires EQ/BD et inflation sont générées
 # en une seule passe couvrant accumulation + décumulation — plus besoin de
 # RNG séparés pour la phase retraite.
+#
+# Vague 2 — Tâche B : "market_correlated" est ajoutée À LA FIN pour préserver
+# la reproductibilité des streams existants ("equity_bonds", "inflation",
+# "gbi_ns", "faleh_gse" gardent leur SeedSequence enfant). Ce stream alimente
+# le tirage joint EQ/BD/inflation de la phase forecast via Cholesky.
 _BUNDLE_KEYS = (
     "equity_bonds",
     "inflation",
     "gbi_ns",
     "faleh_gse",
+    "market_correlated",
 )
 
 

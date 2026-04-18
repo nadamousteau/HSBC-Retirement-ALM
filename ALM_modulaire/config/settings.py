@@ -64,6 +64,12 @@ INFLATION_THETA = 0.023        # Cible d'inflation long terme (2.3%)
 INFLATION_SIGMA = 0.011        # Volatilité de l'inflation (~1.1% annualisée)
 INFLATION_SEED = 42            # deprecated — cf. GLOBAL_SEED (rng_bundle["inflation_accum"])
 
+# Corrélation entre innovations Vasicek inflation et innovations rendements
+# obligataires. Calibrée sur bonds nominaux US 1990-2024 : inflation ↑ ⇒
+# taux ↑ ⇒ prix bonds ↓ (ρ ≈ -0.30). Utilisée dans la phase forecast par
+# `generer_scenarios_marche_correles` (tirage joint equity/bonds/inflation).
+INFLATION_BONDS_CORRELATION = -0.30
+
 # =============================================================================
 # 6. PARAMÈTRES GBI (Goal-Based Investing / CPPI dynamique)
 # =============================================================================
@@ -85,12 +91,31 @@ SIMULER_DECUMULATION = True
 DECUMULATION_PAR_STRATEGIE_ACCUM = True
 
 # Horizon de la retraite
-NB_ANNEES_DECUMULATION = 25          # Durée de la simulation post-retraite
+# Vague 2 / Tâche C — doit couvrir `liability.expected_duration_years() + 5`.
+# Avec age_retraite = AGE_DEPART + NB_ANNEES_ACCUMULATION = 60 et la table
+# TH 00-02 (e_60 ≈ 21.6 ans), la borne minimale est 27. On retient 30 ans
+# pour une marge actuarielle plus généreuse (queue de la distribution).
+NB_ANNEES_DECUMULATION = 30          # Durée de la simulation post-retraite
 
-# Volontés du client — Retrait plancher + variable
-RETRAIT_MENSUEL_REEL = 2000          # Retrait plancher en € constants (besoins essentiels)
+# Volontés du client — Retrait variable (le plancher est porté par LIABILITY_*)
 TAUX_DISTRIBUTION_SURPLUS = 0.30     # Part du surplus distribuée (0 = survie max, 1 = profiter max)
-TAUX_ACTUALISATION_PLANCHER = 0.02   # Taux pour actualiser les retraits futurs (prudence du plancher)
+
+# =============================================================================
+# 7c. PASSIF RETRAITE (RetirementLiability)
+# =============================================================================
+# Le passif retraite est désormais représenté par un objet immutable
+# `RetirementLiability` (cf. src/liabilities/retirement_objective.py).
+# Les anciens scalaires `RETRAIT_MENSUEL_REEL` et `TAUX_ACTUALISATION_PLANCHER`
+# sont remplacés par les LIABILITY_* ci-dessous, qui sont :
+#   - sémantiquement explicites (revenu cible, horizon, actualisation),
+#   - utilisés par la décumulation ET par Faleh comme target_wealth,
+#   - validés au démarrage par strategies.validate_settings().
+LIABILITY_TARGET_INCOME_MONTHLY = 2000   # Revenu mensuel cible (besoins essentiels)
+LIABILITY_INCOME_MODE = "REAL"           # "REAL" (€ constants T0) ou "NOMINAL" (€ futurs)
+LIABILITY_HORIZON_MODE = "ACTUARIAL"     # "ACTUARIAL" (table TH 00-02) ou "FIXED"
+LIABILITY_HORIZON_YEARS_FIXED = 25       # Utilisé seulement si HORIZON_MODE == "FIXED"
+LIABILITY_DISCOUNT_RATE = 0.02           # Taux d'actualisation du passif (prudent)
+LIABILITY_INFLATION_EXPECTED = 0.023     # Inflation anticipée (cohérent avec INFLATION_THETA)
 
 # Stratégie d'investissement en retraite (peut différer de l'accumulation)
 # Choix parmi : "FIXED_MIX", "TARGET_DATE", "FALEH", "ANNUITY"

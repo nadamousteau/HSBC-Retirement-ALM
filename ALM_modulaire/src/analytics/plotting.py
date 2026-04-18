@@ -63,14 +63,14 @@ def _representative_sim_index(mat):
 # GRAPHIQUES — PHASE D'ACCUMULATION
 # =============================================================================
 
-def plot_capital(dates, mat_cap, courbe_investi, reel=False, inflation_factor=None):
+def plot_capital(dates, mat_cap, courbe_investi, strategy_name, reel=False, inflation_factor=None):
     """Génère le graphique de l'évolution du capital, en nominal ou réel."""
     fig, ax = plt.subplots(figsize=(10, 6))
     dates_plot = [pd.Timestamp(settings.DATE_DEBUT_T0)] + list(dates)
-    
+
     nb_periodes = mat_cap.shape[0]
     facteur = generer_facteur_actualisation(nb_periodes, inflation_factor=inflation_factor)
-    
+
     mat_cap_plot = mat_cap * facteur[:, np.newaxis] if reel else mat_cap
     courbe_investi_plot = courbe_investi * facteur if reel else courbe_investi
 
@@ -88,8 +88,8 @@ def plot_capital(dates, mat_cap, courbe_investi, reel=False, inflation_factor=No
     ax.plot(dates_plot, traj_rep, color='black', linewidth=2.5, label='Scénario représentatif')
     ax.plot(dates_plot, traj_p5, color='gray', linewidth=1.2, alpha=0.7, label='P5 (Pessimiste)')
     ax.fill_between(dates_plot, traj_p5, traj_p95, color='gray', alpha=0.15)
-    
-    titre = f"Évolution du Capital Accumulé - {settings.METHODE}"
+
+    titre = f"Évolution du Capital Accumulé - {strategy_name}"
     titre += " (Corrigé de l'inflation)" if reel else " (Nominal)"
     
     ax.set_title(titre)
@@ -100,17 +100,18 @@ def plot_capital(dates, mat_cap, courbe_investi, reel=False, inflation_factor=No
     plt.show()
 
 
-def plot_salaire(dates, hist_salaire, reel=False, inflation_factor=None):
+def plot_salaire(dates, hist_salaire, strategy_name, reel=False, inflation_factor=None):
     """Génère le graphique de l'évolution du salaire, en nominal ou réel."""
     fig, ax = plt.subplots(figsize=(10, 6))
     nb_periodes = len(hist_salaire)
     facteur = generer_facteur_actualisation(nb_periodes, inflation_factor=inflation_factor)
-    
+
     salaire_plot = hist_salaire * facteur if reel else hist_salaire
-    
+
     ax.plot(dates, salaire_plot, color='navy', linewidth=2, label='Salaire mensuel')
-    
-    titre = "Évolution du Salaire" + (" (Corrigé de l'inflation)" if reel else " (Nominal)")
+
+    titre = f"Évolution du Salaire - {strategy_name}"
+    titre += " (Corrigé de l'inflation)" if reel else " (Nominal)"
     ax.set_title(titre)
     ax.set_ylabel("Salaire Constant (€)" if reel else "Salaire (€)")
     ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, p: format(int(x), ',').replace(',', ' ')))
@@ -119,17 +120,18 @@ def plot_salaire(dates, hist_salaire, reel=False, inflation_factor=None):
     plt.show()
 
 
-def plot_apports(dates, hist_apport, reel=False, inflation_factor=None):
+def plot_apports(dates, hist_apport, strategy_name, reel=False, inflation_factor=None):
     """Génère le graphique de l'évolution des apports, en nominal ou réel."""
     fig, ax = plt.subplots(figsize=(10, 6))
     nb_periodes = len(hist_apport)
     facteur = generer_facteur_actualisation(nb_periodes, inflation_factor=inflation_factor)
-    
+
     apport_plot = hist_apport * facteur if reel else hist_apport
-    
+
     ax.plot(dates, apport_plot, color='darkred', linewidth=2, label='Apport mensuel')
-    
-    titre = "Évolution des Apports Mensuels" + (" (Corrigés de l'inflation)" if reel else " (Nominaux)")
+
+    titre = f"Évolution des Apports Mensuels - {strategy_name}"
+    titre += " (Corrigés de l'inflation)" if reel else " (Nominaux)"
     ax.set_title(titre)
     ax.set_ylabel("Apport Constant (€)" if reel else "Apport (€)")
     ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, p: format(int(x), ',').replace(',', ' ')))
@@ -151,7 +153,7 @@ def _get_window_indices(dates_plot, date_crise):
     return idx_start, idx_end, idx_crise
 
 
-def plot_zoom_crise_capital(dates, mat_cap, date_crise, reel=False, inflation_factor=None):
+def plot_zoom_crise_capital(dates, mat_cap, date_crise, strategy_name, reel=False, inflation_factor=None):
     """Génère le zoom sur l'évolution du capital (Nominal ou Réel) autour du choc."""
     dates_plot = pd.DatetimeIndex([pd.Timestamp(settings.DATE_DEBUT_T0)] + list(dates))
     idx_start, idx_end, idx_crise = _get_window_indices(dates_plot, date_crise)
@@ -179,7 +181,8 @@ def plot_zoom_crise_capital(dates, mat_cap, date_crise, reel=False, inflation_fa
 
     ax.axvline(dates_plot[idx_crise], color='red', linestyle='--', linewidth=1.5, label='Choc de marché')
 
-    titre = "Impact Crise : Capital Accumulé" + (" (Réel)" if reel else " (Nominal)")
+    titre = f"Impact Crise : Capital Accumulé - {strategy_name}"
+    titre += " (Réel)" if reel else " (Nominal)"
     ax.set_title(titre)
     ax.set_ylabel("Capital (€)")
     ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, p: format(int(x), ',').replace(',', ' ')))
@@ -188,7 +191,7 @@ def plot_zoom_crise_capital(dates, mat_cap, date_crise, reel=False, inflation_fa
     plt.show()
 
 
-def plot_zoom_crise_rendements(dates, mat_cap, date_crise):
+def plot_zoom_crise_rendements(dates, mat_cap, date_crise, strategy_name):
     """Génère la performance cumulée (Base 100 = 1 an avant crise) du portefeuille."""
     dates_plot = pd.DatetimeIndex([pd.Timestamp(settings.DATE_DEBUT_T0)] + list(dates))
     idx_start, idx_end, idx_crise = _get_window_indices(dates_plot, date_crise)
@@ -213,7 +216,7 @@ def plot_zoom_crise_rendements(dates, mat_cap, date_crise):
     ax.axvline(dates_plot[idx_crise], color='red', linestyle='--', linewidth=1.5, label='Choc de marché')
     ax.axhline(100, color='black', linestyle=':', alpha=0.8)
 
-    ax.set_title("Impact Crise : Performance cumulée du portefeuille (Base 100)")
+    ax.set_title(f"Impact Crise : Performance cumulée (Base 100) - {strategy_name}")
     ax.set_ylabel("Indice (Base 100 = 1 an avant choc)")
     ax.legend(loc='best')
     plt.tight_layout()
@@ -224,7 +227,7 @@ def plot_zoom_crise_rendements(dates, mat_cap, date_crise):
 # GRAPHIQUES — PHASE DE RETRAITE (DÉCUMULATION)
 # =============================================================================
 
-def plot_retraite_capital(mat_cap_retraite, reel=False, inflation_factor=None):
+def plot_retraite_capital(mat_cap_retraite, strategy_name, reel=False, inflation_factor=None):
     """Génère le graphique de l'évolution du capital pendant la retraite (Nominal ou Réel)."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
@@ -257,7 +260,7 @@ def plot_retraite_capital(mat_cap_retraite, reel=False, inflation_factor=None):
     ax.plot(annees, traj_p5, color='gray', linewidth=1.2, alpha=0.7, label='P5')
     ax.fill_between(annees, traj_p5, traj_p95, color='gray', alpha=0.15)
 
-    titre = f"Évolution du Capital en Retraite ({duree} ans)"
+    titre = f"Évolution du Capital en Retraite ({duree} ans) - {strategy_name}"
     titre += " (Réel - € constants T0)" if reel else " (Nominal)"
     
     ax.set_title(titre)
@@ -270,7 +273,7 @@ def plot_retraite_capital(mat_cap_retraite, reel=False, inflation_factor=None):
     plt.show()
 
 
-def plot_taux_remplacement(taux_remp, reel=False, inflation_factor=None):
+def plot_taux_remplacement(taux_remp, strategy_name, reel=False, inflation_factor=None):
     """Génère le graphique de l'évolution du taux de remplacement (Nominal ou Réel)."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
@@ -300,7 +303,7 @@ def plot_taux_remplacement(taux_remp, reel=False, inflation_factor=None):
     
     ax.axhline(100, color='red', linestyle='--', linewidth=1, alpha=0.5, label='100% (Maintien pouvoir d\'achat)')
     
-    titre = "Évolution du Taux de Remplacement en Retraite"
+    titre = f"Évolution du Taux de Remplacement en Retraite - {strategy_name}"
     titre += " (Réel)" if reel else " (Nominal)"
     
     ax.set_title(titre)

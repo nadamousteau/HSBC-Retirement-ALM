@@ -75,31 +75,54 @@ def run_reporting(contextes_par_strat, dates):
             )
     else:
         if getattr(settings, 'PLOT_CAPITAL', False):
-            plotting.plot_capital(dates, mat_cap, courbe_investi, reel=False)
+            plotting.plot_capital(
+                dates, mat_cap, courbe_investi,
+                strategy_name=solo_strat_name, reel=False,
+            )
         if getattr(settings, 'PLOT_CAPITAL_REEL', False):
             plotting.plot_capital(
-                dates, mat_cap, courbe_investi, reel=True, inflation_factor=inflation_factor
+                dates, mat_cap, courbe_investi,
+                strategy_name=solo_strat_name, reel=True,
+                inflation_factor=inflation_factor,
             )
 
     # Graphiques macro-économiques
     if getattr(settings, 'PLOT_SALAIRE', False):
-        plotting.plot_salaire(dates, hist_salaire, reel=False)
+        plotting.plot_salaire(
+            dates, hist_salaire, strategy_name=solo_strat_name, reel=False,
+        )
     if getattr(settings, 'PLOT_SALAIRE_REEL', False):
-        plotting.plot_salaire(dates, hist_salaire, reel=True, inflation_factor=inflation_factor)
+        plotting.plot_salaire(
+            dates, hist_salaire, strategy_name=solo_strat_name, reel=True,
+            inflation_factor=inflation_factor,
+        )
     if getattr(settings, 'PLOT_APPORTS', False):
-        plotting.plot_apports(dates, hist_apport, reel=False)
+        plotting.plot_apports(
+            dates, hist_apport, strategy_name=solo_strat_name, reel=False,
+        )
     if getattr(settings, 'PLOT_APPORTS_REEL', False):
-        plotting.plot_apports(dates, hist_apport, reel=True, inflation_factor=inflation_factor)
+        plotting.plot_apports(
+            dates, hist_apport, strategy_name=solo_strat_name, reel=True,
+            inflation_factor=inflation_factor,
+        )
 
     # Graphiques analytiques (crise)
     if getattr(settings, 'SIMULER_CRISE_LOCALISEE', False):
         if getattr(settings, 'PLOT_CRISE_RENDEMENTS', False):
-            plotting.plot_zoom_crise_rendements(dates, mat_cap, settings.DATE_CRISE)
+            plotting.plot_zoom_crise_rendements(
+                dates, mat_cap, settings.DATE_CRISE,
+                strategy_name=solo_strat_name,
+            )
         if getattr(settings, 'PLOT_CRISE_CAPITAL_NOMINAL', False):
-            plotting.plot_zoom_crise_capital(dates, mat_cap, settings.DATE_CRISE, reel=False)
+            plotting.plot_zoom_crise_capital(
+                dates, mat_cap, settings.DATE_CRISE,
+                strategy_name=solo_strat_name, reel=False,
+            )
         if getattr(settings, 'PLOT_CRISE_CAPITAL_REEL', False):
             plotting.plot_zoom_crise_capital(
-                dates, mat_cap, settings.DATE_CRISE, reel=True, inflation_factor=inflation_factor
+                dates, mat_cap, settings.DATE_CRISE,
+                strategy_name=solo_strat_name, reel=True,
+                inflation_factor=inflation_factor,
             )
 
     # =========================================================================

@@ -1,6 +1,6 @@
 import numpy as np
 from config import settings
-from src.liabilities import contributions
+from src.assets import contribution_policy as contributions
 
 def run_simulation(strategy, r_eq, r_bd, dates, inflation=None):
     """

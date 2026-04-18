@@ -38,11 +38,22 @@ def _fmt(enum_cls):
     return ", ".join(m.value for m in enum_cls)
 
 
+_LIABILITY_INCOME_MODES = ("REAL", "NOMINAL")
+_LIABILITY_HORIZON_MODES = ("FIXED", "ACTUARIAL")
+
+
 def validate_settings(settings_mod):
     """
     Valide que les noms de stratégies référencés dans settings.py
     appartiennent bien aux Enums autorisés. Lève ValueError avec un
     message explicite au premier problème détecté.
+
+    Vague 2 / Tâche C — valide aussi les LIABILITY_* :
+        - existence et type de chaque clé,
+        - mode "REAL"/"NOMINAL" et "FIXED"/"ACTUARIAL",
+        - cohérence horizon : NB_ANNEES_DECUMULATION doit couvrir
+          `RetirementLiability.expected_duration_years() + 5 ans` de marge
+          (sinon les retraits seraient tronqués prématurément).
 
     À appeler en tout début de main() pour échouer vite.
     """
@@ -78,3 +89,71 @@ def validate_settings(settings_mod):
                 f"date de retraite future). Valeurs autorisées : "
                 f"{_fmt(DecumulationStrategy)}"
             )
+
+    # ── LIABILITY_* (Vague 2 / Tâche C) ───────────────────────────────────
+    _validate_liability_settings(settings_mod)
+
+
+def _validate_liability_settings(settings_mod):
+    """
+    Vérifie la présence et la cohérence des clés LIABILITY_* + horizon
+    décumulation. Importe `RetirementLiability` localement pour éviter
+    une dépendance circulaire (enums.py est importé très tôt).
+    """
+    required_keys = {
+        "LIABILITY_TARGET_INCOME_MONTHLY": (int, float),
+        "LIABILITY_INCOME_MODE": str,
+        "LIABILITY_HORIZON_MODE": str,
+        "LIABILITY_HORIZON_YEARS_FIXED": int,
+        "LIABILITY_DISCOUNT_RATE": (int, float),
+        "LIABILITY_INFLATION_EXPECTED": (int, float),
+    }
+    for key, expected_type in required_keys.items():
+        if not hasattr(settings_mod, key):
+            raise ValueError(
+                f"settings manque la clé `{key}` (cf. config/settings.py §7c). "
+                f"Vague 2 / Tâche C : cette clé remplace les anciens "
+                f"RETRAIT_MENSUEL_REEL et TAUX_ACTUALISATION_PLANCHER."
+            )
+        val = getattr(settings_mod, key)
+        if not isinstance(val, expected_type):
+            raise ValueError(
+                f"settings.{key} = {val!r} : type {type(val).__name__} "
+                f"invalide (attendu {expected_type})."
+            )
+
+    income_mode = settings_mod.LIABILITY_INCOME_MODE
+    if income_mode not in _LIABILITY_INCOME_MODES:
+        raise ValueError(
+            f"settings.LIABILITY_INCOME_MODE='{income_mode}' invalide. "
+            f"Valeurs autorisées : {', '.join(_LIABILITY_INCOME_MODES)}"
+        )
+
+    horizon_mode = settings_mod.LIABILITY_HORIZON_MODE
+    if horizon_mode not in _LIABILITY_HORIZON_MODES:
+        raise ValueError(
+            f"settings.LIABILITY_HORIZON_MODE='{horizon_mode}' invalide. "
+            f"Valeurs autorisées : {', '.join(_LIABILITY_HORIZON_MODES)}"
+        )
+
+    if settings_mod.LIABILITY_TARGET_INCOME_MONTHLY <= 0:
+        raise ValueError(
+            f"settings.LIABILITY_TARGET_INCOME_MONTHLY = "
+            f"{settings_mod.LIABILITY_TARGET_INCOME_MONTHLY} : doit être > 0."
+        )
+
+    # Cohérence horizon : NB_ANNEES_DECUMULATION doit couvrir la durée du
+    # passif + marge de sécurité de 5 ans pour absorber la queue de
+    # distribution actuarielle.
+    from src.liabilities.retirement_objective import build_liability_from_settings
+    liability = build_liability_from_settings(settings_mod)
+    expected = liability.expected_duration_years()
+    nb_decum = getattr(settings_mod, "NB_ANNEES_DECUMULATION", 0)
+    marge_min = int(expected) + 5
+    if nb_decum < marge_min:
+        raise ValueError(
+            f"settings.NB_ANNEES_DECUMULATION = {nb_decum} insuffisant : "
+            f"le passif client a une durée espérée de {expected:.1f} ans "
+            f"(mode {horizon_mode}). Augmenter NB_ANNEES_DECUMULATION à "
+            f"au moins {marge_min} ans (durée espérée + 5 ans de marge)."
+        )

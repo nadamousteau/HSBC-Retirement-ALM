@@ -1,0 +1,155 @@
+Inflation Vasicek générée : shape=(480, 1000), μ=0.19%, σ=0.56%
+GBI : Courbe historique (420 obs) + NS-VAR(1) forecast (196 mois, 1000 sims x 360 maturites), retraite 2041-12-31, plancher 80%
+
+================================================================================
+ANALYSE QUANTITATIVE - STRATÉGIE : GBI
+================================================================================
+
+[ PERFORMANCE GLOBALE ]
+  • TRI médian                :            4.66 %/an
+  • Dispersion (P95-P5)       :       1,219,154 €
+
+[ RISQUE & DOWNSIDE ]
+  • Shortfall Risk (< Capital):            0.50 %
+  • VaR 95% (Capital P5 nominal):         420,814 €
+  • Max Drawdown médian       :          -21.73 %
+  • Max Underwater            :             4.6 années
+  • Sortino Ratio             :            1.64
+
+[ ALERTE INFLATION ]
+  • P&L réel P5 (Worst Case)  :         -223,780 € (Destruction de pouvoir d'achat)
+================================================================================
+
+
+Construction de l'arbre de scénarios Faleh...
+   • Profil : EQUILIBRE
+   • Gamma (aversion risque) : 4.00
+   • Scénarios : 1000
+   • Stages : 10
+   • Scénarios générés en 2.77 secondes
+   • Arbre construit en 4.03 secondes
+
+============================================================
+STRUCTURE DE L'ARBRE DE SCÉNARIOS
+============================================================
+Stage 0 (t=  0) :   1 nœuds | Prob totale: 1.000
+Stage 1 (t= 53) :   5 nœuds | Prob totale: 1.000
+              → 5 transitions depuis stage 0
+Stage 2 (t=106) :  25 nœuds | Prob totale: 1.000
+              → 25 transitions depuis stage 1
+Stage 3 (t=159) : 119 nœuds | Prob totale: 1.000
+              → 119 transitions depuis stage 2
+Stage 4 (t=212) : 417 nœuds | Prob totale: 1.000
+              → 417 transitions depuis stage 3
+Stage 5 (t=266) : 836 nœuds | Prob totale: 1.000
+              → 836 transitions depuis stage 4
+Stage 6 (t=319) : 992 nœuds | Prob totale: 1.000
+              → 992 transitions depuis stage 5
+Stage 7 (t=372) : 1000 nœuds | Prob totale: 1.000
+              → 1000 transitions depuis stage 6
+Stage 8 (t=425) : 1000 nœuds | Prob totale: 1.000
+              → 1000 transitions depuis stage 7
+Stage 9 (t=479) : 1000 nœuds | Prob totale: 1.000
+              → 1000 transitions depuis stage 8
+============================================================
+
+
+Optimisation dynamique stochastique...
+   Stage  8: Optimisé 1000 nœuds
+   Stage  7: Optimisé 1000 nœuds
+   Stage  6: Optimisé 992 nœuds
+   Stage  5: Optimisé 836 nœuds
+   Stage  4: Optimisé 417 nœuds
+   Stage  3: Optimisé 119 nœuds
+   Stage  2: Optimisé 25 nœuds
+   Stage  1: Optimisé 5 nœuds
+   Stage  0: Optimisé 1 nœuds
+Optimisation terminée !
+
+   • Allocations optimales pré-calculées en 3.58 secondes
+
+================================================================================
+ANALYSE QUANTITATIVE - STRATÉGIE : FALEH
+================================================================================
+
+[ PERFORMANCE GLOBALE ]
+  • TRI médian                :            4.94 %/an
+  • Dispersion (P95-P5)       :         842,123 €
+
+[ RISQUE & DOWNSIDE ]
+  • Shortfall Risk (< Capital):            0.00 %
+  • VaR 95% (Capital P5 nominal):         568,328 €
+  • Max Drawdown médian       :          -12.57 %
+  • Max Underwater            :             2.2 années
+  • Sortino Ratio             :            3.24
+
+[ ALERTE INFLATION ]
+  • P&L réel P5 (Worst Case)  :         -287,041 € (Destruction de pouvoir d'achat)
+================================================================================
+
+
+================================================================================
+ANALYSE QUANTITATIVE - STRATÉGIE : FIXED_MIX
+================================================================================
+
+[ PERFORMANCE GLOBALE ]
+  • TRI médian                :            4.89 %/an
+  • Dispersion (P95-P5)       :       1,154,779 €
+
+[ RISQUE & DOWNSIDE ]
+  • Shortfall Risk (< Capital):            0.20 %
+  • VaR 95% (Capital P5 nominal):         479,644 €
+  • Max Drawdown médian       :          -19.38 %
+  • Max Underwater            :             3.1 années
+  • Sortino Ratio             :            2.33
+
+[ ALERTE INFLATION ]
+  • P&L réel P5 (Worst Case)  :         -292,091 € (Destruction de pouvoir d'achat)
+================================================================================
+
+
+================================================================================
+ANALYSE QUANTITATIVE - STRATÉGIE : TARGET_DATE
+================================================================================
+
+[ PERFORMANCE GLOBALE ]
+  • TRI médian                :            4.87 %/an
+  • Dispersion (P95-P5)       :       1,185,555 €
+
+[ RISQUE & DOWNSIDE ]
+  • Shortfall Risk (< Capital):            0.20 %
+  • VaR 95% (Capital P5 nominal):         471,274 €
+  • Max Drawdown médian       :          -20.35 %
+  • Max Underwater            :             4.5 années
+  • Sortino Ratio             :            1.89
+================================================================================
+
+
+================================================================================
+SYNTHÈSE DES CAPITAUX FINAUX À LA RETRAITE (FIN D'ACCUMULATION)
+================================================================================
+
+[ STRATÉGIE : GBI ]
+  • Capital P5  (Pessimiste 5%)  :         420,868 EUR
+  • Capital P50 (Médiane)        :         803,624 EUR
+  • Capital P95 (Optimiste 95%)  :       1,641,029 EUR
+
+[ STRATÉGIE : FALEH ]
+  • Capital P5  (Pessimiste 5%)  :         568,405 EUR
+  • Capital P50 (Médiane)        :         857,101 EUR
+  • Capital P95 (Optimiste 95%)  :       1,411,870 EUR
+
+[ STRATÉGIE : FIXED_MIX ]
+  • Capital P5  (Pessimiste 5%)  :         479,725 EUR
+  • Capital P50 (Médiane)        :         846,256 EUR
+  • Capital P95 (Optimiste 95%)  :       1,635,698 EUR
+
+[ STRATÉGIE : TARGET_DATE ]
+  • Capital P5  (Pessimiste 5%)  :         471,360 EUR
+  • Capital P50 (Médiane)        :         844,135 EUR
+  • Capital P95 (Optimiste 95%)  :       1,657,025 EUR
+================================================================================
+
+
+DÉCUMULATION : Génération de 300 mois de rendements...
+DÉCUMULATION : Stratégie=TARGET_DATE, Profil=PRUDENT, Retrait=2000€/mois, Horizon=25ans, Distribution surplus=30%

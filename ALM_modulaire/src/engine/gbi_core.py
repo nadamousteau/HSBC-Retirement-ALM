@@ -15,7 +15,7 @@ Glide path TDF          : identique à TargetDateStrategy (profiles.allocation_i
 import numpy as np
 import pandas as pd
 from config import settings, profiles
-from src.liabilities import contributions
+from src.assets import contribution_policy as contributions
 from src.economics.nelson_siegel_var import compute_beta_from_ns
 
 
@@ -75,12 +75,28 @@ def _compute_beta_matrix(gpi, dates, idx_split, nb_sims, gbi_tensor):
     return beta_matrix
 
 
-def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=None):
+def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split,
+                        inflation=None, liability=None):
     """
     Exécute la simulation Monte Carlo GBI (CPPI avec plancher lié au GPI).
 
     Hybride : GPI historique pendant le backtest, GPI stochastique
     (Nelson-Siegel + VAR(1)) pendant le forecast.
+
+    Note Vague 2 / Tâche C — `liability` est désormais passé en argument.
+    Le passif client fournit `goal_amount = liability.required_capital_at_retirement()`,
+    qui est calculé et exposé pour reporting/diagnostic (funded_ratio en
+    sortie). Le **mécanisme de plancher GBI reste relatif au patrimoine
+    (ratchet `floor_pct × W_annee_debut × beta_t / beta_annee_debut`)** :
+    remplacer ce mécanisme par un plancher absolu Goal-ancré
+    `floor_pct × goal_amount × beta_t` n'est viable que si CAPITAL_INITIAL
+    est proche de `goal_amount × beta_0`, ce qui n'est pas le cas dans le
+    contexte d'apports périodiques (CAPITAL_INITIAL=5k€ vs goal_amount~1.2M€
+    → cushion < 0 dès t=0 et portefeuille bloqué à 100 % bonds). Le passif
+    est donc lu pour information mais le plancher conserve sa dynamique
+    relative. Une évolution future pourrait introduire un plancher
+    `floor_pct × (PV_apports_futurs + goal_amount × beta_t)` qui résout
+    cette pathologie ; hors scope Vague 2.
 
     Args:
         gpi        : GoalPriceIndex — calculateur historique
@@ -92,6 +108,9 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=
         idx_split  : indice de séparation backtest/forecast
         inflation  : ndarray (nb_periods, nb_sims) — inflation stochastique, optionnel
                     Si None, utilise TAUX_INFLATION constant
+        liability  : RetirementLiability — passif client. Fournit
+                     `goal_amount` pour le diagnostic (non utilisé dans
+                     la dynamique du plancher).
 
     Returns:
         mat_capital   : ndarray (nb_periods+1, nb_sims)
@@ -103,7 +122,7 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=
         inflation_factor : ndarray (nb_periods+1, nb_sims) — facteur cumulatif d'inflation
     """
     nb_periods, nb_sims = r_eq.shape
-    
+
     # Générer inflation si non fournie
     if inflation is None:
         inflation = np.ones((nb_periods, nb_sims)) * settings.TAUX_INFLATION
@@ -111,6 +130,13 @@ def run_simulation_gbi(gpi, gbi_tensor, r_eq, r_bd, dates, idx_split, inflation=
     floor_pct    = settings.FLOOR_PERCENT_GBI
     age_depart   = settings.AGE_DEPART
     capital_init = settings.CAPITAL_INITIAL
+
+    # Diagnostic : capital cible au moment de la retraite (lu depuis le passif).
+    # Non utilisé dans la dynamique du plancher (cf. docstring), mais loggué
+    # pour rendre visible l'objectif client.
+    if liability is not None:
+        goal_amount = float(liability.required_capital_at_retirement())
+        print(f"GBI : goal_amount (passif, capital cible retraite) = {goal_amount:,.0f} €")
 
     # ── Pré-calcul de la matrice de betas (hybride historique + NS) ──────
     beta_matrix = _compute_beta_matrix(gpi, dates, idx_split, nb_sims, gbi_tensor)

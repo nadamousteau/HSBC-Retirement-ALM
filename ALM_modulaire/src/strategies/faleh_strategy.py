@@ -46,12 +46,20 @@ class FalehStrategy(BaseStrategy):
     }
     
     def __init__(self, mu_e, sigma_e, mu_b, sigma_b, corr_eb,
-                 target_wealth=None, nb_tree_stages=settings.FALEH_NB_TREE_STAGES,
+                 liability=None, target_wealth=None,
+                 nb_tree_stages=settings.FALEH_NB_TREE_STAGES,
                  rng=None):
         """
         Args:
             mu_e, sigma_e, mu_b, sigma_b, corr_eb: Paramètres de marché
-            target_wealth: Objectif de capital à la retraite (calculé si None)
+            liability     : `RetirementLiability` ou None — passif client.
+                            Si fourni, target_wealth est dérivé de
+                            `liability.required_capital_at_retirement()`.
+                            Argument injecté par le pipeline (Vague 2 / Tâche C).
+            target_wealth : float ou None — override explicite (priorité sur
+                            `liability` si tous deux fournis). Conservé pour
+                            les tests unitaires et les cas où l'on veut
+                            piloter directement la cible.
             nb_tree_stages: Nombre de stages dans l'arbre de décision
             rng: np.random.Generator ou None — injecté par le bundle global
                  (rng_bundle["faleh_gse"]). Si None, fallback non-reproductible.
@@ -79,11 +87,22 @@ class FalehStrategy(BaseStrategy):
         # RNG dédié (bundle "faleh_gse")
         self.rng = rng if rng is not None else np.random.default_rng()
 
-        # Objectif de richesse
-        if target_wealth is None:
-            self.target_wealth = self._estimate_target_wealth()
+        # Passif client (Vague 2 / Tâche C)
+        self.liability = liability
+
+        # Objectif de richesse — priorité : target_wealth explicite > liability >
+        # erreur (l'ancienne heuristique 80 % × FV portefeuille a été supprimée
+        # car elle ignorait totalement le passif client).
+        if target_wealth is not None:
+            self.target_wealth = float(target_wealth)
+        elif liability is not None:
+            self.target_wealth = float(liability.required_capital_at_retirement())
         else:
-            self.target_wealth = target_wealth
+            raise ValueError(
+                "FalehStrategy : ni `liability` ni `target_wealth` fournis. "
+                "Le pipeline doit injecter un RetirementLiability "
+                "(cf. src/liabilities/retirement_objective.py)."
+            )
 
         # Cache pour les allocations optimales
         self.optimal_allocations = {}
@@ -295,34 +314,6 @@ class FalehStrategy(BaseStrategy):
             optimal_w = x0
         
         return optimal_w
-    
-    def _estimate_target_wealth(self):
-        """
-        Estime l'objectif de richesse basé sur les paramètres du profil.
-        Calcul correct de la valeur future avec contributions périodiques.
-        """
-        T = settings.NB_ANNEES_ACCUMULATION
-        r_portfolio = 0.6 * self.mu_e + 0.4 * self.mu_b
-        
-        # Valeur future du capital initial
-        fv_capital_initial = settings.CAPITAL_INITIAL * (1 + r_portfolio) ** T
-        
-        # Valeur future des contributions mensuelles (formule de l'annuité)
-        monthly_contribution = settings.SALAIRE_INITIAL * settings.TAUX_APPORT_BASE
-        r_monthly = r_portfolio / 12
-        nb_months = T * 12
-        
-        # Formule : FV = C × [(1 + r)^n - 1] / r
-        if abs(r_monthly) > 1e-10:
-            fv_contributions = monthly_contribution * ((1 + r_monthly) ** nb_months - 1) / r_monthly
-        else:
-            # Cas limite : taux proche de 0
-            fv_contributions = monthly_contribution * nb_months
-        
-        # Target = 80% de la valeur future totale (facteur de prudence)
-        target = (fv_capital_initial + fv_contributions) * 0.8
-        
-        return target
     
     def _fallback_allocation(self, current_age):
         """

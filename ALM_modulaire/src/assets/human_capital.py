@@ -1,5 +1,25 @@
+"""
+CAPITAL HUMAIN — Diffusion stochastique des salaires
+=====================================================
+Issu de la Vague 2 / Tâche C : déplacé verbatim depuis
+`src.liabilities.contributions` (où il vivait par erreur — un flux de
+salaire est un revenu d'actif humain, pas un passif retraite).
+
+`HumanCapitalCurve` modélise la trajectoire salariale d'un individu via :
+    - Une dérive de carrière hétérogène par scénario (lambda gaussien,
+      amortie en fin de carrière par alpha_amortissement).
+    - Une élasticité dynamique à l'inflation : forte indexation tant que
+      le salaire est sous le seuil pivot, indexation décroissante au-dessus.
+    - Un choc idiosyncratique gaussien (volatilité résiduelle).
+    - Un plancher de rigidité salariale (-2% / an).
+
+Renvoie une matrice (3, n_mois) avec les centiles transversaux P50/P5/P95.
+Utilisé pour générer des scénarios de revenu réalistes en amont du moteur
+de contribution.
+"""
 
 import numpy as np
+
 
 class HumanCapitalCurve:
     """
@@ -8,24 +28,24 @@ class HumanCapitalCurve:
     """
 
     def __init__(
-        self, 
-        age_depart: int, 
-        salaire_depart: float, 
-        taux_apport_depart: float, 
-        mode_investissement: str, 
+        self,
+        age_depart: int,
+        salaire_depart: float,
+        taux_apport_depart: float,
+        mode_investissement: str,
         age_retraite: int,
         matrice_inflation: np.ndarray,
-        n_simulations: int 
+        n_simulations: int
     ):
         # Variables d'état de l'individu
         self.age_depart = age_depart
         self.salaire_depart = salaire_depart
-        self.contrib_depart = taux_apport_depart 
+        self.contrib_depart = taux_apport_depart
         self.mode_investissement = mode_investissement
         self.age_retraite = age_retraite
         self.matrice_inflation = matrice_inflation
         self.n_simulations = n_simulations
-        
+
         # Paramètres structurels du modèle stochastique salarial
         self.lambda_mu = 0.03                 # Espérance du potentiel de croissance
         self.lambda_sigma = 0.02              # Écart-type du potentiel de croissance
@@ -45,7 +65,7 @@ class HumanCapitalCurve:
         """
         n_annees = self.age_retraite - self.age_depart
         n_mois = n_annees * 12
-        
+
         # Validation de la dimension d'entrée (mensuelle)
         if len(self.matrice_inflation) != n_mois:
             raise ValueError(f"La matrice d'inflation doit contenir {n_mois} points mensuels.")
@@ -68,18 +88,18 @@ class HumanCapitalCurve:
             age_precedent = ages_annuels[k-1]
             salaires_precedents = salaires_simules[:, k-1]
             inflation_precedente = inflation_annuelle[k-1]
-            
+
             annees_experience = max(0, age_precedent - self.age_reference)
-            
+
             # Dérive et élasticité
             derive_carriere = vecteur_lambda * np.exp(-self.alpha_amortissement * annees_experience)
             facteur_desindexation = (self.salaire_seuil / salaires_precedents)
             beta_dynamique = np.clip(self.beta_max * facteur_desindexation, self.beta_min, self.beta_max)
-            
+
             # Choc stochastique
             Z = np.random.standard_normal(self.n_simulations)
             choc_aleatoire = self.volatilite_idiosyncratique * Z
-            
+
             # Transition avec plancher de rigidité
             taux_revalorisation = np.maximum(-0.02, (beta_dynamique * inflation_precedente) + derive_carriere + choc_aleatoire)
             salaires_simules[:, k] = salaires_precedents * (1.0 + taux_revalorisation)
@@ -97,7 +117,7 @@ class HumanCapitalCurve:
         ])
 
         return matrice_salaire
-    
+
     def precalculer_parametres_apport_exponentiel(self, s_init: float, s_max: float, duree_totale: float):
         """
         Calcule les paramètres de la courbe quadratique d'apport.
@@ -106,16 +126,16 @@ class HumanCapitalCurve:
         facteur = ratio ** 1.5
         app_init = s_init * self.contrib_depart
         app_max = app_init * facteur
-        
+
         # Calcul du temps de pic (t_pic) via la dynamique de progression
         s_cible = s_init + (s_max - s_init) * 0.935
-        
+
         if s_cible >= s_max:
             t_pic = duree_totale
         else:
             val_log = 1 - min((s_cible - s_init) / max(1.0, (s_max - s_init)), 0.9999)
             t_pic = -np.log(val_log) / 0.10
-            
+
         return app_init, app_max, np.clip(t_pic, 0, duree_totale)
 
     def matrice_apport(self, matrice_salaires: np.ndarray) -> np.ndarray:
@@ -126,7 +146,7 @@ class HumanCapitalCurve:
         n_scenarios, n_mois = matrice_salaires.shape
         duree_ans = n_mois / 12
         matrice_apports = np.zeros_like(matrice_salaires)
-        
+
         t_mois = np.arange(n_mois)
         t_annees = t_mois / 12
 
@@ -135,46 +155,16 @@ class HumanCapitalCurve:
             app_init, app_max, t_pic = self.precalculer_parametres_apport_exponentiel(
                 s_traj[0], s_traj[-1], duree_ans
             )
-            
+
             if t_pic <= 0:
                 matrice_apports[i, :] = app_init
                 continue
-                
+
             # Coefficient de la parabole : a = (app_init - app_max) / (t_pic^2)
             # f(t) = a * (t - t_pic)^2 + app_max
             a = (app_init - app_max) / (t_pic**2)
             apports = a * (t_annees - t_pic)**2 + app_max
-            
+
             matrice_apports[i, :] = np.maximum(apports, 0.0)
 
         return matrice_apports
-
-
-# =============================================================================
-# Fonctions standalone (rétrocompatibilité avec core.py / gbi_core.py)
-# =============================================================================
-
-def precalculer_parametres_apport_exponentiel(s_init, s_max, duree_totale):
-    from config import settings
-    ratio = s_max / s_init
-    facteur = ratio ** 1.5
-    app_init = s_init * settings.TAUX_APPORT_BASE
-    app_max = app_init * facteur
-    s_cible = s_init + (s_max - s_init) * 0.935
-    if s_cible >= s_max:
-        t_pic = duree_totale
-    else:
-        val_log = 1 - min((s_cible - s_init) / max(1.0, (s_max - s_init)), 0.9999)
-        t_pic = -np.log(val_log) / 0.10
-    return app_init, app_max, np.clip(t_pic, 0, duree_totale)
-
-
-def calculer_apport_exponentiel(t, app_init, app_max, t_pic):
-    if t_pic <= 0:
-        return app_init
-    a = (app_init - app_max) / (t_pic ** 2)
-    return max(0.0, a * (t - t_pic) ** 2 + app_max)
-
-
-def estimer_salaire_saturation(t, s_init, s_max):
-    return s_init + (s_max - s_init) * (1 - np.exp(-0.10 * t))
